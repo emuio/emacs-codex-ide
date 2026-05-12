@@ -65,7 +65,7 @@ transcript and log buffers remain available after the run finishes.")
 
 (defun codex-ide-integration-run--display-buffer (state)
   "Display STATE's integration output buffer."
-  (when-let ((buffer (and state (codex-ide-integration-run-state-buffer state))))
+  (when-let* ((buffer (and state (codex-ide-integration-run-state-buffer state))))
     (when (buffer-live-p buffer)
       (display-buffer buffer))))
 
@@ -78,7 +78,7 @@ transcript and log buffers remain available after the run finishes.")
 
 (defun codex-ide-integration-run--completed-checks-summary (state)
   "Return a display summary of STATE's completed checkpoints."
-  (if-let ((checks (codex-ide-integration-run-state-completed-checks state)))
+  (if-let* ((checks (codex-ide-integration-run-state-completed-checks state)))
       (mapconcat (lambda (check)
                    (format "- %s" check))
                  checks
@@ -87,14 +87,14 @@ transcript and log buffers remain available after the run finishes.")
 
 (defun codex-ide-integration-run--cancel-timer (state)
   "Cancel STATE's pending timer, if any."
-  (when-let ((timer (and state (codex-ide-integration-run-state-timer state))))
+  (when-let* ((timer (and state (codex-ide-integration-run-state-timer state))))
     (cancel-timer timer)
     (setf (codex-ide-integration-run-state-timer state) nil)))
 
 (defun codex-ide-integration-run-cancel ()
   "Cancel the active interactive codex-ide integration run."
   (interactive)
-  (if-let ((state codex-ide-integration-run--active-state))
+  (if-let* ((state codex-ide-integration-run--active-state))
       (progn
         (codex-ide-integration-run--cancel-timer state)
         (setf (codex-ide-integration-run-state-completed state) t)
@@ -111,7 +111,7 @@ transcript and log buffers remain available after the run finishes.")
          state
          (concat "FAIL: " format-string)
          args)
-  (when-let ((session (codex-ide-integration-run-state-session state)))
+  (when-let* ((session (codex-ide-integration-run-state-session state)))
     (codex-ide-integration-run--log
      state
      "failure context:\n%s"
@@ -208,7 +208,7 @@ DESCRIPTION is used for log output.  TIMEOUT is in seconds."
 
 (defun codex-ide-integration-run--session-idle-p (state)
   "Return non-nil when STATE's session is idle and ready."
-  (when-let ((session (codex-ide-integration-run-state-session state)))
+  (when-let* ((session (codex-ide-integration-run-state-session state)))
     (and (buffer-live-p (codex-ide-session-buffer session))
          (process-live-p (codex-ide-session-process session))
          (not (codex-ide-session-current-turn-id session))
@@ -391,7 +391,7 @@ FIRST-PROMPT, SECOND-PROMPT, and LATEST-PROMPT are expected history entries."
 
 (defun codex-ide-integration-run--cleanup (state)
   "Clean up STATE after an interactive run."
-  (when-let ((session (codex-ide-integration-run-state-session state)))
+  (when-let* ((session (codex-ide-integration-run-state-session state)))
     (codex-ide-integration--cleanup-session session))
   (dolist (buffer (buffer-list))
     (unless (memq buffer (codex-ide-integration-run-state-buffers-before state))

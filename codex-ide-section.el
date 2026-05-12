@@ -100,7 +100,7 @@
   "Clear section state in the current buffer."
   (remove-overlays (point-min) (point-max) 'codex-ide-section-hidden t)
   (remove-overlays (point-min) (point-max) 'codex-ide-section-indicator t)
-  (when-let ((overlay codex-ide-section--highlight-overlay))
+  (when-let* ((overlay codex-ide-section--highlight-overlay))
     (delete-overlay overlay))
   (setq codex-ide-section--root-sections nil
         codex-ide-section--section-stack nil
@@ -117,7 +117,7 @@
 (defun codex-ide-section-heading-at-point (&optional pos)
   "Return the section whose heading contains POS or point."
   (setq pos (or pos (point)))
-  (when-let ((section (codex-ide-section-at-point pos)))
+  (when-let* ((section (codex-ide-section-at-point pos)))
     (when (and (<= (codex-ide-section-heading-start section) pos)
                (< pos (codex-ide-section-heading-end section)))
       section)))
@@ -165,14 +165,14 @@
 
 (defun codex-ide-section--siblings (section)
   "Return SECTION's siblings in display order."
-  (if-let ((parent (codex-ide-section-parent section)))
+  (if-let* ((parent (codex-ide-section-parent section)))
       (codex-ide-section-children parent)
     codex-ide-section--root-sections))
 
 (defun codex-ide-section-up ()
   "Move point to the parent section heading."
   (interactive)
-  (if-let ((parent (codex-ide-section-parent (codex-ide-section--current))))
+  (if-let* ((parent (codex-ide-section-parent (codex-ide-section--current))))
       (codex-ide-section--move-to parent)
     (user-error "No parent section")))
 
@@ -183,7 +183,7 @@
          (sections (seq-filter #'codex-ide-section--visible-p
                                (codex-ide-section--all-sections)))
          (tail (memq current sections)))
-    (if-let ((next (cadr tail)))
+    (if-let* ((next (cadr tail)))
         (codex-ide-section--move-to next)
       (user-error "No next section"))))
 
@@ -206,7 +206,7 @@
          (siblings (seq-filter #'codex-ide-section--visible-p
                                (codex-ide-section--siblings current)))
          (tail (memq current siblings)))
-    (if-let ((next (cadr tail)))
+    (if-let* ((next (cadr tail)))
         (codex-ide-section--move-to next)
       (user-error "No next sibling section"))))
 
@@ -239,7 +239,7 @@
 (defun codex-ide-section--set-heading-properties (section start end)
   "Tag SECTION heading text from START to END."
   (when (codex-ide-section-interactive-heading section)
-    (let ((map (if-let ((section-map (codex-ide-section-keymap section)))
+    (let ((map (if-let* ((section-map (codex-ide-section-keymap section)))
                    (make-composed-keymap
                     (list section-map codex-ide-section-heading-map))
                  codex-ide-section-heading-map)))
@@ -268,13 +268,13 @@
          section
          (codex-ide-section-heading-start section)
          (codex-ide-section-heading-end section)))
-    (when-let ((overlay (codex-ide-section-indicator-overlay section)))
+    (when-let* ((overlay (codex-ide-section-indicator-overlay section)))
       (delete-overlay overlay)
       (setf (codex-ide-section-indicator-overlay section) nil))))
 
 (defun codex-ide-section--delete-highlight-overlay ()
   "Delete the current section highlight overlay."
-  (when-let ((overlay codex-ide-section--highlight-overlay))
+  (when-let* ((overlay codex-ide-section--highlight-overlay))
     (delete-overlay overlay))
   (setq codex-ide-section--highlight-overlay nil))
 
@@ -313,7 +313,7 @@ When FORCE is non-nil, repaint even if the highlighted section and line did not 
 
 (defun codex-ide-section-show (section)
   "Show SECTION body."
-  (when-let ((overlay (codex-ide-section-overlay section)))
+  (when-let* ((overlay (codex-ide-section-overlay section)))
     (delete-overlay overlay)
     (setf (codex-ide-section-overlay section) nil))
   (setf (codex-ide-section-hidden section) nil)
@@ -345,7 +345,7 @@ When FORCE is non-nil, repaint even if the highlighted section and line did not 
 (defun codex-ide-section-toggle-at-point ()
   "Toggle the section at point."
   (interactive)
-  (if-let ((section (codex-ide-section-at-point)))
+  (if-let* ((section (codex-ide-section-at-point)))
       (codex-ide-section-toggle section)
     (user-error "No section at point")))
 

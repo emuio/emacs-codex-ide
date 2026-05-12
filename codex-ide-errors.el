@@ -111,9 +111,9 @@
   "Return supplemental detail lines from INFO."
   (delq nil
         (list
-         (when-let ((status (alist-get 'http-status info)))
+         (when-let* ((status (alist-get 'http-status info)))
            (format "HTTP status: %s" status))
-         (when-let ((delay (alist-get 'retry-delay-ms info)))
+         (when-let* ((delay (alist-get 'retry-delay-ms info)))
            (format "Retry delay: %sms" delay))
          (let ((details (string-trim
                          (codex-ide--stringify-error-payload

@@ -30,7 +30,7 @@
 
 (defun codex-ide-human-time-ago (timestamp)
   "Return a compact human-readable relative time string for TIMESTAMP."
-  (when-let ((time (codex-ide--human-time-normalize timestamp)))
+  (when-let* ((time (codex-ide--human-time-normalize timestamp)))
     (let* ((seconds (max 0 (floor (float-time (time-since time))))))
       (cond
        ((< seconds 60)

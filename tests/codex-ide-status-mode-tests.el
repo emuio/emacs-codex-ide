@@ -46,7 +46,7 @@
   (with-temp-buffer
     (insert text)
     (let ((codex-ide-status-mode-transcript-preview-max-lines max-lines))
-      (when-let ((range (codex-ide-status-mode--transcript-preview-range
+      (when-let* ((range (codex-ide-status-mode--transcript-preview-range
                          (point-min)
                          (point-max))))
         (buffer-substring-no-properties (car range) (cdr range))))))

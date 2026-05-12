@@ -29,7 +29,7 @@
 
 (defun codex-ide-session-buffer-list--last-prompt-text (session)
   "Return the last non-empty prompt text from SESSION's live buffer."
-  (when-let ((buffer (codex-ide-session-buffer session)))
+  (when-let* ((buffer (codex-ide-session-buffer session)))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
         (save-excursion

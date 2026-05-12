@@ -199,7 +199,7 @@ window size change."
 
 (defun codex-ide-renderer-markdown-table-max-width-for-buffer (buffer)
   "Return the effective markdown table max width for BUFFER."
-  (when-let ((window (codex-ide-renderer-markdown-table-layout-window buffer)))
+  (when-let* ((window (codex-ide-renderer-markdown-table-layout-window buffer)))
     (max 1
          (- (window-body-width window)
             (max 0 codex-ide-renderer-markdown-table-window-margin)))))
@@ -285,7 +285,7 @@ window size change."
          #'buffer-live-p
          codex-ide-renderer--markdown-table-resize-buffers))
   (dolist (buffer codex-ide-renderer--markdown-table-resize-buffers)
-    (when-let ((table-max-width
+    (when-let* ((table-max-width
                 (codex-ide-renderer-markdown-table-max-width-for-buffer
                  buffer)))
       (codex-ide-renderer--schedule-markdown-table-rerender
@@ -773,12 +773,12 @@ Return a plist containing `:delete-start', `:boundary', and `:end' markers."
      ((string-match "\\`\\(/[^#\n]+\\)#L\\([0-9]+\\)\\(?:C\\([0-9]+\\)\\)?\\'" normalized)
       (list (match-string 1 normalized)
             (string-to-number (match-string 2 normalized))
-            (when-let ((column (match-string 3 normalized)))
+            (when-let* ((column (match-string 3 normalized)))
               (string-to-number column))))
      ((string-match "\\`\\(/[^:\n]+\\):\\([0-9]+\\)\\(?::\\([0-9]+\\)\\)?\\'" normalized)
       (list (match-string 1 normalized)
             (string-to-number (match-string 2 normalized))
-            (when-let ((column (match-string 3 normalized)))
+            (when-let* ((column (match-string 3 normalized)))
               (string-to-number column))))
      ((string-prefix-p "/" normalized)
       (list normalized nil nil))
@@ -1198,7 +1198,7 @@ When DETAIL is a diff block, use DIFF-FACE-FN to choose faces."
       (plist-get detail :text)
       (or diff-face-fn #'ignore)))
     (_
-     (when-let ((label (plist-get detail :label)))
+     (when-let* ((label (plist-get detail :label)))
        (codex-ide-renderer-insert-approval-label (format "%s: " label)))
      (insert (or (plist-get detail :text) ""))
      (insert "\n"))))
@@ -1434,7 +1434,7 @@ intentionally ignored."
 (defun codex-ide-renderer--render-streaming-current-line-inline-markdown
     (start end)
   "Render completed inline markdown spans on the current streaming line."
-  (when-let ((region (codex-ide-renderer--streaming-current-line-inline-region
+  (when-let* ((region (codex-ide-renderer--streaming-current-line-inline-region
                       start
                       end)))
     (let ((line-start (car region))
@@ -1471,7 +1471,7 @@ intentionally ignored."
   (when (and codex-ide-renderer-markdown-streaming-defer-delay
              (> codex-ide-renderer-markdown-streaming-defer-delay 0)
              (< start end))
-    (when-let ((region (codex-ide-renderer--streaming-current-line-inline-region
+    (when-let* ((region (codex-ide-renderer--streaming-current-line-inline-region
                         start
                         end)))
       (let* ((line-start (car region))
@@ -1571,7 +1571,7 @@ intentionally ignored."
      (codex-ide-renderer--clear-streaming-deferred-markdown
       bounded-start
       bounded-end)
-     (if-let ((span (or (codex-ide-renderer--streaming-trailing-table-source-span
+     (if-let* ((span (or (codex-ide-renderer--streaming-trailing-table-source-span
                          bounded-start
                          bounded-end)
                         (codex-ide-renderer--streaming-deferred-table-row-span
@@ -1814,7 +1814,7 @@ intentionally ignored."
 
 (defun codex-ide-renderer--render-streaming-open-fenced-code-block (start end)
   "Render an unclosed fenced code block between START and END."
-  (when-let ((open (codex-ide-renderer--streaming-open-fence-tail start end)))
+  (when-let* ((open (codex-ide-renderer--streaming-open-fence-tail start end)))
     (pcase-let ((`(,fence-start ,code-start ,language) open))
       (codex-ide-renderer--without-undo-recording
        (let ((inhibit-read-only t))
@@ -2232,7 +2232,7 @@ Use LEFT, INTERSECTION, and RIGHT as the border junction characters."
 
 (defun codex-ide-renderer--markdown-table-effective-max-width (indent)
   "Return the table max width after accounting for INDENT."
-  (when-let ((table-max (or codex-ide-renderer--markdown-table-max-width-override
+  (when-let* ((table-max (or codex-ide-renderer--markdown-table-max-width-override
                             codex-ide-renderer-markdown-table-max-width)))
     (when (> table-max 0)
       (max 1 (- table-max (string-width indent))))))
@@ -2402,11 +2402,11 @@ Use LEFT, INTERSECTION, and RIGHT as the border junction characters."
   (let ((end-marker (copy-marker end t)))
     (goto-char start)
     (while (< (point) (marker-position end-marker))
-      (if-let ((table (codex-ide-renderer--markdown-table-block-at-point
+      (if-let* ((table (codex-ide-renderer--markdown-table-block-at-point
                        (marker-position end-marker)
                        allow-trailing)))
           (pcase-let ((`(,block-start ,block-end ,lines) table))
-            (if-let ((rendered (codex-ide-renderer--markdown-table-display-string lines)))
+            (if-let* ((rendered (codex-ide-renderer--markdown-table-display-string lines)))
                 (let ((original (buffer-substring-no-properties
                                  block-start
                                  block-end))
@@ -2460,7 +2460,7 @@ TABLE-MAX-WIDTH is the effective table width to use for this pass."
            (cond
             ((and original
                   (not (equal render-width table-max-width)))
-             (if-let ((rendered (codex-ide-renderer--markdown-table-display-string
+             (if-let* ((rendered (codex-ide-renderer--markdown-table-display-string
                                  (split-string original "\n" t))))
                  (let ((read-only-table
                         (codex-ide-renderer--fully-read-only-region-p

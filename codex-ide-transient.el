@@ -61,7 +61,7 @@
 
 (defun codex-ide--has-active-session-p ()
   "Return non-nil if the current project has an active Codex session."
-  (when-let ((process (codex-ide--get-process)))
+  (when-let* ((process (codex-ide--get-process)))
     (process-live-p process)))
 
 (defun codex-ide--session-status ()

@@ -56,7 +56,7 @@ Return a result alist suitable for a JSON-RPC success response."
 (defun codex-ide-mcp-elicitation-format-completion (params)
   "Return a short human-readable completion summary for elicitation PARAMS."
   (setq params (codex-ide-mcp-elicitation-normalize-completion params))
-  (if-let ((elicitation-id (alist-get 'elicitationId params)))
+  (if-let* ((elicitation-id (alist-get 'elicitationId params)))
       (format "MCP elicitation completed: %s" elicitation-id)
     "MCP elicitation completed"))
 
@@ -109,10 +109,10 @@ FIELD should be one of `codex-ide-mcp-elicitation-field-specs' results."
   (concat
    (plist-get field :title)
    (if (plist-get field :requiredp) " (required)" " (optional)")
-   (if-let ((description (plist-get field :description)))
+   (if-let* ((description (plist-get field :description)))
        (format " - %s" description)
      "")
-   (if-let ((default (plist-get field :default)))
+   (if-let* ((default (plist-get field :default)))
        (format " [default: %s]" default)
      "")))
 

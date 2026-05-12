@@ -79,7 +79,7 @@
 (defun codex-ide--environment-variable-value (name environment)
   "Return NAME's value in ENVIRONMENT, or nil when unset."
   (let ((prefix (concat name "=")))
-    (when-let ((entry (cl-find-if
+    (when-let* ((entry (cl-find-if
                        (lambda (value)
                          (string-prefix-p prefix value))
                        environment)))
@@ -475,7 +475,7 @@ protocol requests such as thread listing."
          (thread nil)
          (thread-id nil)
          (omit-thread-id (and (eq mode 'resume)
-                              (when-let ((current-session
+                              (when-let* ((current-session
                                           (codex-ide--session-for-current-buffer)))
                                 (codex-ide-session-thread-id current-session)))))
     (condition-case err
@@ -495,7 +495,7 @@ protocol requests such as thread listing."
                     ('resume
                      (codex-ide--pick-thread query-session omit-thread-id))))
             (setq thread-id (alist-get 'id thread))
-            (when-let ((existing-session
+            (when-let* ((existing-session
                         (codex-ide--session-for-thread-id thread-id working-dir)))
               (setq reused-session existing-session)))
           (if reused-session
@@ -603,7 +603,7 @@ protocol requests such as thread listing."
 
 (defun codex-ide--process-filter (process chunk)
   "Handle app-server PROCESS output CHUNK."
-  (when-let ((session (process-get process 'codex-session)))
+  (when-let* ((session (process-get process 'codex-session)))
     (codex-ide-log-message session "Received process chunk (%d chars)" (length chunk))
     (let* ((pending (concat (or (codex-ide-session-partial-line session) "")
                             chunk))
@@ -615,7 +615,7 @@ protocol requests such as thread listing."
 
 (defun codex-ide--process-sentinel (process event)
   "Handle app-server PROCESS EVENT."
-  (when-let ((session (process-get process 'codex-session)))
+  (when-let* ((session (process-get process 'codex-session)))
     (let ((buffer (codex-ide-session-buffer session)))
       (codex-ide-log-message session "Process event: %s" (string-trim event))
       (if (process-live-p process)
@@ -817,7 +817,7 @@ protocol requests such as thread listing."
   "Interrupt the active Codex turn for the current project."
   (interactive)
   (let ((session (codex-ide--session-for-current-project)))
-    (if-let ((turn-id (codex-ide-session-current-turn-id session)))
+    (if-let* ((turn-id (codex-ide-session-current-turn-id session)))
         (progn
           (codex-ide-log-message session "Sending interrupt for turn %s" turn-id)
           (setf (codex-ide-session-interrupt-requested session) t)

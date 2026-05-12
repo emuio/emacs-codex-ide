@@ -151,12 +151,12 @@
                                 session))
             (sandbox . ,(codex-ide-config-effective-value 'sandbox-mode session))
             (personality . ,(codex-ide-config-effective-value 'personality session))
-            ,@(when-let ((model (codex-ide-config-effective-value 'model session)))
+            ,@(when-let* ((model (codex-ide-config-effective-value 'model session)))
                 `((model . ,model)))))))
 
 (defun codex-ide--turn-start-sandbox-policy (&optional session)
   "Build a `sandboxPolicy` object for `turn/start` from SESSION settings."
-  (when-let ((mode (codex-ide-config-effective-value 'sandbox-mode session)))
+  (when-let* ((mode (codex-ide-config-effective-value 'sandbox-mode session)))
     (pcase mode
       ("read-only"
        '((type . "readOnly")))
@@ -181,7 +181,7 @@
                                 session))
             (sandbox . ,(codex-ide-config-effective-value 'sandbox-mode session))
             (personality . ,(codex-ide-config-effective-value 'personality session))
-            ,@(when-let ((model (codex-ide-config-effective-value 'model session)))
+            ,@(when-let* ((model (codex-ide-config-effective-value 'model session)))
                 `((model . ,model)))))))
 
 (defun codex-ide--thread-read-params (thread-id &optional include-turns)
@@ -216,7 +216,7 @@
 
 (defun codex-ide--remember-reasoning-effort (session payload)
   "Persist reasoning effort from PAYLOAD into SESSION metadata."
-  (when-let ((effort (codex-ide--extract-reasoning-effort payload)))
+  (when-let* ((effort (codex-ide--extract-reasoning-effort payload)))
     (codex-ide--session-metadata-put session :reasoning-effort effort)))
 
 (defun codex-ide--extract-model-name (payload)
@@ -265,7 +265,7 @@
 
 (defun codex-ide--remember-model-name (session payload)
   "Persist model information from PAYLOAD into SESSION metadata."
-  (when-let ((model (codex-ide--extract-model-name payload)))
+  (when-let* ((model (codex-ide--extract-model-name payload)))
     (codex-ide--set-session-model-name session model)
     t))
 

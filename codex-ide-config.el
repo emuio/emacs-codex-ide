@@ -287,7 +287,7 @@ without prompting."
 (defun codex-ide-config--resolve-choices (key)
   "Return available completion choices for config KEY."
   (or (codex-ide-config--choices key)
-      (when-let ((fn (codex-ide-config--choices-function key)))
+      (when-let* ((fn (codex-ide-config--choices-function key)))
         (funcall fn))))
 
 (defun codex-ide-config-read-value (key &optional session)

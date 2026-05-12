@@ -46,10 +46,10 @@
 (cl-defun codex-ide--make-buffer-context (&optional buffer &key working-dir)
   "Build Codex context for BUFFER or the current buffer.
 When WORKING-DIR is nil, infer the project directory from BUFFER."
-  (when-let ((buffer (or buffer (current-buffer))))
+  (when-let* ((buffer (or buffer (current-buffer))))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
-        (when-let ((working-dir (codex-ide--normalize-directory
+        (when-let* ((working-dir (codex-ide--normalize-directory
                                  (or working-dir
                                      (codex-ide--get-working-directory)))))
           (let ((file-path (buffer-file-name)))
@@ -111,7 +111,7 @@ The return value contains 1-based line numbers and 0-based columns."
 
 (defun codex-ide--format-session-context ()
   "Format the one-time session baseline prompt block."
-  (when-let ((prompt (and (stringp codex-ide-session-baseline-prompt)
+  (when-let* ((prompt (and (stringp codex-ide-session-baseline-prompt)
                           (string-trim codex-ide-session-baseline-prompt))))
     (unless (string-empty-p prompt)
       (format (concat "%s\n"
@@ -182,7 +182,7 @@ The return value contains 1-based line numbers and 0-based columns."
 
 (defun codex-ide--context-with-selected-region (context &optional buffer)
   "Return CONTEXT augmented with BUFFER's active region, when present."
-  (if-let ((selection (codex-ide--buffer-selection-context buffer)))
+  (if-let* ((selection (codex-ide--buffer-selection-context buffer)))
       (append context `((selection . ,selection)))
     context))
 
@@ -204,7 +204,7 @@ Return an alist containing either `(buffer . BUFFER)' or `(discarded . t)'."
         (cond
          ((buffer-live-p tracked-buffer)
           `((buffer . ,tracked-buffer)))
-         ((when-let ((inferred (codex-ide--infer-recent-file-buffer)))
+         ((when-let* ((inferred (codex-ide--infer-recent-file-buffer)))
             (puthash working-dir inferred codex-ide--active-buffer-objects)
             `((buffer . ,inferred))))
          ((and working-dir
@@ -235,7 +235,7 @@ Return an alist containing either `(buffer . BUFFER)' or `(discarded . t)'."
          (context-buffer (alist-get 'buffer resolution)))
     (cond
      (context-buffer
-      (when-let ((context (codex-ide--make-buffer-context
+      (when-let* ((context (codex-ide--make-buffer-context
                            context-buffer
                            :working-dir working-dir)))
         (unless codex-ide--prompt-origin-buffer

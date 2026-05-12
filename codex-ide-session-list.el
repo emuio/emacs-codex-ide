@@ -106,7 +106,7 @@
           (goto-char (region-beginning))
           (beginning-of-line)
           (while (<= (point) end)
-            (when-let ((id (tabulated-list-get-id)))
+            (when-let* ((id (tabulated-list-get-id)))
               (push id ids))
             (forward-line 1)))
         (or (nreverse ids)

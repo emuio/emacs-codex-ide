@@ -109,7 +109,7 @@ for batch callers that already presented a single confirmation."
   (interactive
    (list
     (read-string "Delete Codex thread ID: "
-                 (when-let ((session (codex-ide--get-default-session-for-current-buffer)))
+                 (when-let* ((session (codex-ide--get-default-session-for-current-buffer)))
                    (codex-ide-session-thread-id session)))))
   (unless (and (stringp thread-id)
                (not (string-empty-p (string-trim thread-id))))

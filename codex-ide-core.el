@@ -249,7 +249,7 @@ When SUFFIX is nil, return BUFFER-NAME unchanged."
 
 (defun codex-ide--session-buffer-p (buffer)
   "Return non-nil when BUFFER looks like a Codex session buffer."
-  (when-let ((name (cond
+  (when-let* ((name (cond
                     ((stringp buffer) buffer)
                     ((buffer-live-p buffer) (buffer-name buffer)))))
     (string-prefix-p (format "*%s[" codex-ide-buffer-name-prefix) name)))
@@ -263,7 +263,7 @@ When SUFFIX is nil, return BUFFER-NAME unchanged."
 (defun codex-ide--get-working-directory ()
   "Return the current project root or `default-directory'."
   (codex-ide--normalize-directory
-   (if-let ((project (project-current)))
+   (if-let* ((project (project-current)))
        (project-root project)
      default-directory)))
 
@@ -415,14 +415,14 @@ When LIVE-ONLY is non-nil, only include sessions with live processes."
 
 (defun codex-ide--get-last-active-buffer-for-project (&optional directory)
   "Return the most recently active live Codex session buffer for DIRECTORY."
-  (when-let ((session (codex-ide--last-active-session-for-directory directory))
+  (when-let* ((session (codex-ide--last-active-session-for-directory directory))
              (buffer (codex-ide-session-buffer session)))
     (when (buffer-live-p buffer)
       buffer)))
 
 (defun codex-ide--get-last-active-buffer-all-projects ()
   "Return the most recently active live Codex session buffer across projects."
-  (when-let ((session (codex-ide--last-active-session))
+  (when-let* ((session (codex-ide--last-active-session))
              (buffer (codex-ide-session-buffer session)))
     (when (buffer-live-p buffer)
       buffer)))
@@ -434,7 +434,7 @@ When LIVE-ONLY is non-nil, only include sessions with live processes."
 
 (defun codex-ide--get-process ()
   "Return the Codex process associated with the current working directory."
-  (when-let ((session (codex-ide--get-session)))
+  (when-let* ((session (codex-ide--get-session)))
     (codex-ide-session-process session)))
 
 (defun codex-ide--get-default-session-for-current-buffer ()
@@ -527,7 +527,7 @@ current buffer's project directory."
 (defun codex-ide--item-state (&optional session item-id)
   "Return tracked state for ITEM-ID in SESSION."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
-  (when-let ((states (and session (codex-ide-session-item-states session))))
+  (when-let* ((states (and session (codex-ide-session-item-states session))))
     (gethash item-id states)))
 
 (defun codex-ide--put-item-state (&optional session item-id state)
@@ -540,7 +540,7 @@ current buffer's project directory."
 (defun codex-ide--clear-item-state (&optional session item-id)
   "Clear tracked state for ITEM-ID in SESSION."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
-  (when-let ((states (and session (codex-ide-session-item-states session))))
+  (when-let* ((states (and session (codex-ide-session-item-states session))))
     (remhash item-id states)))
 
 (defun codex-ide--reset-prompt-history-navigation (session)
@@ -574,7 +574,7 @@ This cache is maintained even when no Codex session is currently active."
 (defun codex-ide--track-active-buffer-post-command ()
   "Track the last focused real file buffer after commands.
 This keeps project file context available when switching into the Codex buffer."
-  (when-let ((buffer (codex-ide--safe-current-buffer)))
+  (when-let* ((buffer (codex-ide--safe-current-buffer)))
     (when (and (buffer-live-p buffer)
                (not (minibufferp buffer))
                (not (codex-ide--session-buffer-p buffer)))
@@ -583,10 +583,10 @@ This keeps project file context available when switching into the Codex buffer."
 (defun codex-ide--remember-buffer-context-before-switch (&optional buffer)
   "Capture BUFFER's file context before switching into a Codex buffer.
 When BUFFER is nil, use the current buffer."
-  (when-let ((target (or buffer (codex-ide--safe-current-buffer))))
+  (when-let* ((target (or buffer (codex-ide--safe-current-buffer))))
     (unless (or (minibufferp target)
                 (codex-ide--session-buffer-p target))
-      (when-let ((context (codex-ide--make-buffer-context target)))
+      (when-let* ((context (codex-ide--make-buffer-context target)))
         (when (codex-ide--buffer-context-ambient-project-p context)
           (let ((working-dir (alist-get 'project-dir context)))
             (puthash working-dir context codex-ide--active-buffer-contexts)
@@ -625,7 +625,7 @@ When BUFFER is nil, use the current buffer."
          (buffer (gethash working-dir codex-ide--active-buffer-objects)))
     (cond
      ((buffer-live-p buffer) buffer)
-     ((when-let ((inferred (codex-ide--infer-recent-file-buffer)))
+     ((when-let* ((inferred (codex-ide--infer-recent-file-buffer)))
         (puthash working-dir inferred codex-ide--active-buffer-objects)
         inferred))
      (t nil))))
@@ -634,7 +634,7 @@ When BUFFER is nil, use the current buffer."
   "Return the best available active file context for the current project."
   (let ((working-dir (codex-ide--get-working-directory)))
     (or (gethash working-dir codex-ide--active-buffer-contexts)
-        (when-let ((context (codex-ide--infer-recent-file-context)))
+        (when-let* ((context (codex-ide--infer-recent-file-context)))
           (puthash working-dir context codex-ide--active-buffer-contexts)
           context))))
 

@@ -300,7 +300,7 @@ Errors from `server-running-p' are treated as nil."
   (with-current-buffer buffer
     `((buffer . ,(buffer-name buffer))
       (file . ,(codex-ide-mcp-bridge--json-nullable
-                (when-let ((file (buffer-file-name buffer)))
+                (when-let* ((file (buffer-file-name buffer)))
                   (expand-file-name file))))
       (major-mode . ,(symbol-name major-mode))
       (modified . ,(codex-ide-mcp-bridge--json-bool
@@ -359,7 +359,7 @@ Errors from `server-running-p' are treated as nil."
 (defun codex-ide-mcp-bridge--project-root ()
   "Return the current project root, or nil when unavailable."
   (when (require 'project nil t)
-    (when-let ((project (ignore-errors (project-current nil))))
+    (when-let* ((project (ignore-errors (project-current nil))))
       (expand-file-name (project-root project)))))
 
 (defun codex-ide-mcp-bridge--goto-line-end-inclusive (line)
@@ -406,7 +406,7 @@ Errors from `server-running-p' are treated as nil."
        `((source . "flymake")
          (buffer . ,(buffer-name))
          (file . ,(codex-ide-mcp-bridge--json-nullable
-                   (when-let ((file (buffer-file-name)))
+                   (when-let* ((file (buffer-file-name)))
                      (expand-file-name file))))
          (message . ,(flymake-diagnostic-text diag))
          (severity . ,(codex-ide-mcp-bridge--diagnostic-severity diag))
@@ -431,7 +431,7 @@ Errors from `server-running-p' are treated as nil."
        `((source . "flycheck")
          (buffer . ,(buffer-name))
          (file . ,(codex-ide-mcp-bridge--json-nullable
-                   (when-let ((file (or (and (fboundp 'flycheck-error-filename)
+                   (when-let* ((file (or (and (fboundp 'flycheck-error-filename)
                                              (flycheck-error-filename err))
                                         (buffer-file-name))))
                      (expand-file-name file))))
@@ -643,7 +643,7 @@ Errors from `server-running-p' are treated as nil."
     (with-current-buffer buffer
       `((buffer . ,(buffer-name buffer))
         (file . ,(codex-ide-mcp-bridge--json-nullable
-                  (when-let ((file (buffer-file-name buffer)))
+                  (when-let* ((file (buffer-file-name buffer)))
                     (expand-file-name file))))
         (diagnostics . ,(codex-ide-mcp-bridge--json-array
                          (or (codex-ide-mcp-bridge--flymake-diagnostics)
@@ -739,7 +739,7 @@ Errors from `server-running-p' are treated as nil."
                           (re-search-forward needle nil t))
                 (push `((buffer . ,(buffer-name buffer))
                         (file . ,(codex-ide-mcp-bridge--json-nullable
-                                  (when-let ((file (buffer-file-name buffer)))
+                                  (when-let* ((file (buffer-file-name buffer)))
                                     (expand-file-name file))))
                         (line . ,(line-number-at-pos (match-beginning 0)))
                         (column . ,(save-excursion

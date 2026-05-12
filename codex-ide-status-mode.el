@@ -266,8 +266,8 @@ while 1 would fully replace the background with the foreground color."
 (defun codex-ide-status-mode--find-section-by-path (path)
   "Return the section identified by PATH, or nil when absent."
   (cl-labels ((find-in (sections remaining)
-                (when-let ((key (car remaining)))
-                  (when-let ((section
+                (when-let* ((key (car remaining)))
+                  (when-let* ((section
                               (cl-find-if
                                (lambda (candidate)
                                  (equal (codex-ide-status-mode--section-identity candidate)
@@ -323,7 +323,7 @@ while 1 would fully replace the background with the foreground color."
   "Restore the status buffer view STATE after rerendering."
   (let ((target nil))
     (dolist (entry (alist-get 'collapsed state))
-      (when-let ((section (codex-ide-status-mode--find-section-by-path (car entry))))
+      (when-let* ((section (codex-ide-status-mode--find-section-by-path (car entry))))
         (if (cdr entry)
             (codex-ide-section-hide section)
           (codex-ide-section-show section))))
@@ -360,7 +360,7 @@ Only child `buffer' and `thread' sections support visit and delete actions."
           (goto-char (region-beginning))
           (beginning-of-line)
           (while (<= (point) end)
-            (when-let ((section (codex-ide-status-mode--section-containing-point)))
+            (when-let* ((section (codex-ide-status-mode--section-containing-point)))
               (when (and (memq (codex-ide-section-type section) '(buffer thread))
                          (not (memq section sections)))
                 (push section sections)))
@@ -607,7 +607,7 @@ Only child `buffer' and `thread' sections support visit and delete actions."
 (defun codex-ide-status-mode--first-prompt-data (session)
   "Return plist describing the first non-empty submitted prompt in SESSION.
 The plist contains `:text', `:start', and `:end'."
-  (when-let ((buffer (codex-ide-session-buffer session)))
+  (when-let* ((buffer (codex-ide-session-buffer session)))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
         (save-excursion
@@ -643,10 +643,10 @@ The plist contains `:text', `:start', and `:end'."
 
 (defun codex-ide-status-mode--active-prompt-data (session)
   "Return plist describing SESSION's current non-empty editable prompt."
-  (when-let ((buffer (codex-ide-session-buffer session)))
+  (when-let* ((buffer (codex-ide-session-buffer session)))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
-        (when-let ((prompt-start (and (codex-ide-session-input-prompt-start-marker session)
+        (when-let* ((prompt-start (and (codex-ide-session-input-prompt-start-marker session)
                                       (marker-position
                                        (codex-ide-session-input-prompt-start-marker session))))
                    (input-start (and (codex-ide-session-input-start-marker session)
@@ -663,7 +663,7 @@ The plist contains `:text', `:start', and `:end'."
 (defun codex-ide-status-mode--last-prompt-data-before (session position)
   "Return plist describing the last non-empty prompt in SESSION before POSITION.
 The plist contains `:text', `:start', and `:end'."
-  (when-let ((buffer (codex-ide-session-buffer session)))
+  (when-let* ((buffer (codex-ide-session-buffer session)))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
         (save-excursion
@@ -697,7 +697,7 @@ The plist contains `:text', `:start', and `:end'."
 
 (defun codex-ide-status-mode--last-submitted-prompt-data (session)
   "Return plist describing SESSION's last submitted prompt."
-  (when-let ((buffer (codex-ide-session-buffer session)))
+  (when-let* ((buffer (codex-ide-session-buffer session)))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
         (let ((search-end (if (codex-ide--input-prompt-active-p session)
@@ -778,7 +778,7 @@ The plist contains `:text', `:start', and `:end'."
 
 (defun codex-ide-status-mode--last-agent-response-range (session)
   "Return the start and end positions of SESSION's last agent response."
-  (when-let ((buffer (codex-ide-session-buffer session)))
+  (when-let* ((buffer (codex-ide-session-buffer session)))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
         (save-excursion
@@ -918,7 +918,7 @@ at the start of the containing separator-delimited block."
                (block-start
                 (progn
                   (goto-char line-start)
-                  (if-let ((separator-start (search-backward separator start t)))
+                  (if-let* ((separator-start (search-backward separator start t)))
                       (+ separator-start (length separator))
                     start)))
                (content-start
@@ -935,7 +935,7 @@ at the start of the containing separator-delimited block."
       (when (< start trimmed-end)
         (goto-char trimmed-end)
         (let* ((block-start
-                (if-let ((separator-start
+                (if-let* ((separator-start
                           (search-backward separator start t)))
                     (+ separator-start (length separator))
                   start))
@@ -982,7 +982,7 @@ at the start of the containing separator-delimited block."
   "Return the last relevant transcript slice for SESSION.
 This includes the in-progress turn transcript or the last completed reply block.
 Return nil when there is no agent reply."
-  (when-let ((buffer (codex-ide-session-buffer session)))
+  (when-let* ((buffer (codex-ide-session-buffer session)))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
         (if (and (codex-ide--input-prompt-active-p session)
@@ -997,7 +997,7 @@ Return nil when there is no agent reply."
                session
                (car block-range)
                (cdr block-range)))
-          (when-let ((turn-range
+          (when-let* ((turn-range
                       (codex-ide-status-mode--current-turn-transcript-range session)))
             (codex-ide-status-mode--copy-buffer-region-for-status
              session
@@ -1017,7 +1017,7 @@ Return nil when there is no agent reply."
 
 (defun codex-ide-status-mode--thread-status (thread directory)
   "Return the display status for THREAD in DIRECTORY."
-  (if-let ((session (codex-ide--session-for-thread-id
+  (if-let* ((session (codex-ide--session-for-thread-id
                      (alist-get 'id thread)
                      directory)))
       (codex-ide-session-status session)

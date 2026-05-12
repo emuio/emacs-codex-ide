@@ -48,13 +48,13 @@
 (defun codex-ide-rollout--message-item (payload)
   "Convert a rollout message PAYLOAD into a transcript item."
   (when (member (alist-get 'role payload) '("assistant" assistant))
-    (when-let ((text (codex-ide--thread-read--message-text payload)))
+    (when-let* ((text (codex-ide--thread-read--message-text payload)))
       (unless (string-empty-p (string-trim text))
         `((type . "agentMessage")
-          ,@(when-let ((id (alist-get 'id payload)))
+          ,@(when-let* ((id (alist-get 'id payload)))
               `((id . ,id)))
           (text . ,text)
-          ,@(when-let ((phase (alist-get 'phase payload)))
+          ,@(when-let* ((phase (alist-get 'phase payload)))
               `((phase . ,phase))))))))
 
 (defun codex-ide-rollout--function-call-item (payload)
@@ -76,7 +76,7 @@
         (command . ,command)
         (aggregatedOutput . nil)
         (status . nil)
-        ,@(when-let ((cwd (codex-ide-rollout--alist-get-any
+        ,@(when-let* ((cwd (codex-ide-rollout--alist-get-any
                            '(workdir cwd) arguments)))
             `((cwd . ,cwd)))))
      ((and (stringp namespace)
@@ -135,7 +135,7 @@ an \"Output:\" line.  Return a plist with :output and, when available, :exit-cod
     ("commandExecution"
      (let ((details (codex-ide-rollout--exec-command-output output)))
        (setf (alist-get 'aggregatedOutput item) (plist-get details :output))
-       (when-let ((exit-code (plist-get details :exit-code)))
+       (when-let* ((exit-code (plist-get details :exit-code)))
          (setf (alist-get 'exitCode item) exit-code)))
      (setf (alist-get 'status item) "completed"))
     ("fileChange"
@@ -182,7 +182,7 @@ an \"Output:\" line.  Return a plist with :output and, when available, :exit-cod
                  ((and current-active
                        (equal entry-type "response_item")
                        (equal payload-type "message"))
-                  (when-let ((item (codex-ide-rollout--message-item payload)))
+                  (when-let* ((item (codex-ide-rollout--message-item payload)))
                     (push item current-items)))
                  ((and current-active
                        (equal entry-type "response_item")
@@ -190,7 +190,7 @@ an \"Output:\" line.  Return a plist with :output and, when available, :exit-cod
                   (let ((item (codex-ide-rollout--function-call-item payload)))
                     (when item
                       (push item current-items)
-                      (when-let ((call-id (alist-get 'id item)))
+                      (when-let* ((call-id (alist-get 'id item)))
                         (puthash call-id item items-by-call-id)))))
                  ((and current-active
                        (equal entry-type "response_item")
@@ -198,7 +198,7 @@ an \"Output:\" line.  Return a plist with :output and, when available, :exit-cod
                   (let ((item (codex-ide-rollout--custom-tool-call-item payload)))
                     (when item
                       (push item current-items)
-                      (when-let ((call-id (alist-get 'id item)))
+                      (when-let* ((call-id (alist-get 'id item)))
                         (puthash call-id item items-by-call-id)))))
                  ((and current-active
                        (equal entry-type "response_item")

@@ -69,7 +69,7 @@
   "Return non-nil when POS is inside SESSION's active prompt region."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
   (setq pos (or pos (point)))
-  (when-let ((overlay (and session (codex-ide-session-input-overlay session))))
+  (when-let* ((overlay (and session (codex-ide-session-input-overlay session))))
     (let ((start (overlay-start overlay))
           (end (overlay-end overlay)))
       (and start
@@ -80,7 +80,7 @@
 (defun codex-ide-session-mode--input-end-position (&optional session)
   "Return SESSION's editable input end position, if available."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
-  (when-let ((marker (and session
+  (when-let* ((marker (and session
                           (codex-ide--session-metadata-get
                            session
                            :input-end-marker))))
@@ -94,7 +94,7 @@
   "Enable or disable `codex-ide-session-prompt-minor-mode' for SESSION."
   (setq session (or session (and (boundp 'codex-ide--session) codex-ide--session)))
   (when (and session (derived-mode-p 'codex-ide-session-mode))
-    (when-let ((input-end (codex-ide-session-mode--input-end-position session)))
+    (when-let* ((input-end (codex-ide-session-mode--input-end-position session)))
       (when (and (codex-ide--point-in-active-prompt-p session)
                  (> (point) input-end))
         (goto-char input-end)))
@@ -116,7 +116,7 @@
 SESSION's active editable prompt is excluded because input navigation should
 land at the editable input start rather than on the read-only prompt prefix."
   (let ((active-prompt-start
-         (when-let ((marker (and session
+         (when-let* ((marker (and session
                                  (codex-ide-session-input-prompt-start-marker
                                   session))))
            (when (and (markerp marker)
@@ -269,13 +269,13 @@ follow state."
 This covers inline approval and elicitation regions rendered near the live tail,
 so users can navigate within those controls without opting out of follow mode."
   (setq pos (or pos (point)))
-  (when-let ((start (codex-ide-session-mode--interactive-request-preserve-start
+  (when-let* ((start (codex-ide-session-mode--interactive-request-preserve-start
                      session)))
     (>= pos start)))
 
 (defun codex-ide-session-mode--track-tail-follow-navigation ()
   "Track whether the selected transcript window has opted out of tail following."
-  (when-let ((window (and (derived-mode-p 'codex-ide-session-mode)
+  (when-let* ((window (and (derived-mode-p 'codex-ide-session-mode)
                           (eq (window-buffer (selected-window)) (current-buffer))
                           (selected-window))))
     (let ((session (and (boundp 'codex-ide--session) codex-ide--session))

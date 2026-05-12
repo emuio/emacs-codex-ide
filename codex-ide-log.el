@@ -93,7 +93,7 @@
 
 (defun codex-ide-log-message (session format-string &rest args)
   "Append a formatted log line for SESSION using FORMAT-STRING and ARGS."
-  (when-let ((buffer (codex-ide--ensure-log-buffer session)))
+  (when-let* ((buffer (codex-ide--ensure-log-buffer session)))
     (let ((text (apply #'format format-string args)))
       (with-current-buffer buffer
         (let ((inhibit-read-only t)
@@ -108,13 +108,13 @@
 
 (defun codex-ide--kill-log-buffer (session)
   "Kill SESSION's currently computed log buffer, if live."
-  (when-let ((buffer (get-buffer (codex-ide--log-buffer-name session))))
+  (when-let* ((buffer (get-buffer (codex-ide--log-buffer-name session))))
     (let ((kill-buffer-query-functions nil))
       (kill-buffer buffer))))
 
 (defun codex-ide--stderr-filter (process chunk)
   "Append stderr CHUNK from PROCESS to the owning session log."
-  (when-let ((session (process-get process 'codex-session)))
+  (when-let* ((session (process-get process 'codex-session)))
     (let* ((sanitized (codex-ide--sanitize-ansi-text chunk))
            (pending (concat (or (codex-ide--session-metadata-get session :stderr-partial) "")
                             sanitized))

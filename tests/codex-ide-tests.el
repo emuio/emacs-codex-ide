@@ -55,7 +55,7 @@
 
 (defun codex-ide-test--input-placeholder-overlay-live-p (session)
   "Return non-nil when SESSION's placeholder overlay is attached."
-  (when-let ((overlay (codex-ide--session-metadata-get
+  (when-let* ((overlay (codex-ide--session-metadata-get
                        session
                        :input-placeholder-overlay)))
     (and (overlayp overlay)

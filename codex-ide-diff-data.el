@@ -216,7 +216,7 @@
 
 (defun codex-ide--record-pending-turn-start (session turn-id)
   "Bind SESSION's pending transcript turn-start marker to TURN-ID."
-  (when-let ((marker (codex-ide--pending-turn-start-marker session)))
+  (when-let* ((marker (codex-ide--pending-turn-start-marker session)))
     (codex-ide--record-turn-start session turn-id marker)
     (codex-ide--set-pending-turn-start-marker session nil)))
 
@@ -261,7 +261,7 @@ When POINT or BUFFER is nil, use the current point and buffer."
 
 (defun codex-ide--mark-current-turn-diff-completed (session)
   "Mark SESSION's tracked combined-diff entry as completed."
-  (when-let ((existing (codex-ide--current-turn-diff-entry session)))
+  (when-let* ((existing (codex-ide--current-turn-diff-entry session)))
     (codex-ide--set-current-turn-diff-entry
      session
      (plist-put (copy-tree existing) :status 'completed))))
@@ -307,7 +307,7 @@ When POINT or BUFFER is nil, use the current point and buffer."
 
 (defun codex-ide--current-turn-diff-texts (session)
   "Return normalized diff texts for SESSION's tracked active turn."
-  (when-let ((entry (codex-ide--current-turn-diff-entry session)))
+  (when-let* ((entry (codex-ide--current-turn-diff-entry session)))
     (delq nil
           (mapcar (lambda (item-entry)
                     (let* ((item (plist-get item-entry :item))

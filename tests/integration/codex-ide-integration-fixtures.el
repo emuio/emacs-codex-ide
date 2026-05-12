@@ -49,7 +49,7 @@
 
 (defun codex-ide-integration--timeout ()
   "Return the configured integration wait timeout in seconds."
-  (or (when-let ((value (getenv "CODEX_IDE_INTEGRATION_TIMEOUT")))
+  (or (when-let* ((value (getenv "CODEX_IDE_INTEGRATION_TIMEOUT")))
         (let ((seconds (string-to-number value)))
           (when (> seconds 0)
             seconds)))
@@ -225,7 +225,7 @@ TIMEOUT is in seconds.  DESCRIPTION is included in timeout errors."
   ;; once the baseline real-Codex path is stable.
   (setq codex-ide-want-mcp-bridge nil)
   (setq codex-ide-enable-emacs-tool-bridge nil)
-  (when-let ((model (getenv "CODEX_IDE_INTEGRATION_MODEL")))
+  (when-let* ((model (getenv "CODEX_IDE_INTEGRATION_MODEL")))
     (unless (string-empty-p model)
       (setq codex-ide-model model)))
   (setq codex-ide-approval-policy

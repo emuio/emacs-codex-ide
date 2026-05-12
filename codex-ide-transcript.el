@@ -109,7 +109,7 @@ clicked window stays where it was.")
 (defun codex-ide--update-mode-line (&optional session)
   "Refresh the mode line indicator for SESSION."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
-  (when-let ((buffer (and session (codex-ide-session-buffer session))))
+  (when-let* ((buffer (and session (codex-ide-session-buffer session))))
     (with-current-buffer buffer
       (force-mode-line-update t))))
 
@@ -147,7 +147,7 @@ clicked window stays where it was.")
 When a running-input summary is displayed above the active prompt, new
 transcript text is inserted before that summary so the summary and prompt remain
 at the bottom of the live session."
-  (when-let ((marker (codex-ide--append-boundary-marker buffer)))
+  (when-let* ((marker (codex-ide--append-boundary-marker buffer)))
     (marker-position marker)))
 
 (defun codex-ide--append-boundary-marker (buffer)
@@ -162,12 +162,12 @@ at the bottom of the live session."
 
 (defun codex-ide--active-input-boundary-position (buffer)
   "Return BUFFER's active prompt boundary while output is streaming."
-  (when-let ((marker (codex-ide--active-input-boundary-marker buffer)))
+  (when-let* ((marker (codex-ide--active-input-boundary-marker buffer)))
     (marker-position marker)))
 
 (defun codex-ide--active-input-boundary-marker (buffer)
   "Return BUFFER's active prompt marker while output is streaming."
-  (when-let ((session (codex-ide--session-for-buffer buffer)))
+  (when-let* ((session (codex-ide--session-for-buffer buffer)))
     (when (and (or (codex-ide-session-current-turn-id session)
                    (codex-ide-session-output-prefix-inserted session))
                (codex-ide--input-prompt-active-p session))
@@ -182,7 +182,7 @@ at the bottom of the live session."
 (defun codex-ide--input-end-marker (&optional session)
   "Return SESSION's active editable input end marker, if live."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
-  (when-let ((marker (and session
+  (when-let* ((marker (and session
                           (codex-ide--session-metadata-get
                            session
                            :input-end-marker))))
@@ -366,13 +366,13 @@ can keep using the current tail position."
 
 (defun codex-ide--advance-active-boundary-after (buffer marker)
   "Move BUFFER's active prompt and append boundaries after MARKER when needed."
-  (when-let ((active-boundary (codex-ide--active-input-boundary-marker buffer)))
+  (when-let* ((active-boundary (codex-ide--active-input-boundary-marker buffer)))
     (when (and (markerp marker)
                (eq (marker-buffer marker) buffer)
                (<= (marker-position active-boundary)
                    (marker-position marker)))
       (set-marker active-boundary (marker-position marker))))
-  (when-let ((append-boundary (codex-ide--append-boundary-marker buffer)))
+  (when-let* ((append-boundary (codex-ide--append-boundary-marker buffer)))
     (when (and (markerp marker)
                (eq (marker-buffer marker) buffer)
                (<= (marker-position append-boundary)
@@ -381,7 +381,7 @@ can keep using the current tail position."
 
 (defun codex-ide--advance-append-boundary-after (buffer insertion-position end)
   "Move BUFFER's append boundary to END after inserting at INSERTION-POSITION."
-  (when-let ((append-boundary (codex-ide--append-boundary-marker buffer)))
+  (when-let* ((append-boundary (codex-ide--append-boundary-marker buffer)))
     (when (= insertion-position (marker-position append-boundary))
       (set-marker append-boundary end))))
 
@@ -414,7 +414,7 @@ inserted text."
 						      (codex-ide--advance-append-boundary-after buffer inserted-at end)
 						      (when advance-active-boundary
 							(set-marker active-boundary end)
-							(when-let ((session (codex-ide--session-for-buffer buffer)))
+							(when-let* ((session (codex-ide--session-for-buffer buffer)))
 							  (codex-ide--ensure-active-input-prompt-spacing
 							   session))))))))))
 
@@ -507,7 +507,7 @@ Move MARKER after the inserted text."
 
 (defun codex-ide--clear-pending-output-indicator (session)
   "Remove SESSION's pending-output indicator, if it is still present."
-  (when-let ((marker (codex-ide--session-metadata-get
+  (when-let* ((marker (codex-ide--session-metadata-get
                       session
                       :pending-output-indicator-marker)))
     (let ((buffer (marker-buffer marker))
@@ -570,14 +570,14 @@ Move MARKER after the inserted text."
 (defun codex-ide--delete-input-overlay (session)
   "Delete the active input overlay for SESSION, if any."
   (codex-ide--delete-input-placeholder-overlay session)
-  (when-let ((overlay (codex-ide-session-input-overlay session)))
+  (when-let* ((overlay (codex-ide-session-input-overlay session)))
     (delete-overlay overlay)
     (setf (codex-ide-session-input-overlay session) nil)))
 
 (defun codex-ide--delete-input-placeholder-overlay (session)
   "Delete SESSION's active input placeholder overlay, if any."
   (codex-ide--stop-input-placeholder-animation session)
-  (when-let ((overlay (codex-ide--session-metadata-get
+  (when-let* ((overlay (codex-ide--session-metadata-get
                        session
                        :input-placeholder-overlay)))
     (delete-overlay overlay)
@@ -589,7 +589,7 @@ Move MARKER after the inserted text."
 (defun codex-ide--input-placeholder-text (&optional session)
   "Return the placeholder text for SESSION's current prompt state."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
-  (if-let ((status-text
+  (if-let* ((status-text
             (and session
                  (codex-ide--session-metadata-get
                   session
@@ -627,7 +627,7 @@ Move MARKER after the inserted text."
 
 (defun codex-ide--input-placeholder-animated-text (session text)
   "Return TEXT with its trailing ellipsis frame applied for SESSION."
-  (if-let ((frame (and (codex-ide--input-placeholder-busy-p session)
+  (if-let* ((frame (and (codex-ide--input-placeholder-busy-p session)
                        (string-suffix-p "..." text)
                        (codex-ide--session-metadata-get
                         session
@@ -682,7 +682,7 @@ Move MARKER after the inserted text."
 
 (defun codex-ide--stop-input-placeholder-animation (session)
   "Stop SESSION's prompt help animation timer, if any."
-  (when-let ((timer (codex-ide--session-metadata-get
+  (when-let* ((timer (codex-ide--session-metadata-get
                      session
                      :input-placeholder-animation-timer)))
     (when (timerp timer)
@@ -703,7 +703,7 @@ Move MARKER after the inserted text."
         (codex-ide--session-metadata-put
          session
          :input-placeholder-ellipsis-frame
-         (if-let ((frame (codex-ide--session-metadata-get
+         (if-let* ((frame (codex-ide--session-metadata-get
                           session
                           :input-placeholder-ellipsis-frame)))
              (mod (1+ frame)
@@ -796,7 +796,7 @@ Move MARKER after the inserted text."
 
 (defun codex-ide--refresh-input-placeholder-after-change (&rest _args)
   "Refresh the active prompt placeholder after editable buffer changes."
-  (when-let ((session (codex-ide--session-for-buffer (current-buffer))))
+  (when-let* ((session (codex-ide--session-for-buffer (current-buffer))))
     (codex-ide--refresh-input-placeholder session)))
 
 (defun codex-ide--setup-input-placeholder-hooks ()
@@ -943,7 +943,7 @@ Move MARKER after the inserted text."
 
 (defun codex-ide--insert-running-input-list (session)
   "Insert SESSION's running queue list above the active prompt."
-  (when-let ((text (codex-ide--running-input-list-text session)))
+  (when-let* ((text (codex-ide--running-input-list-text session)))
     (let ((buffer (codex-ide-session-buffer session)))
       (when (buffer-live-p buffer)
         (with-current-buffer buffer
@@ -1052,7 +1052,7 @@ When DRAFT is nil, preserve the current active prompt text."
 
 (defun codex-ide--format-rate-limit-window-label (window)
   "Return a compact label for rate limit WINDOW."
-  (when-let ((minutes (alist-get 'windowDurationMins window)))
+  (when-let* ((minutes (alist-get 'windowDurationMins window)))
     (cond
      ((= minutes 10080) "wk")
      ((and (> minutes 0) (= (mod minutes 1440) 0))
@@ -1080,14 +1080,14 @@ When DRAFT is nil, preserve the current active prompt text."
     (when windows
       (format "Quota: %s%s"
               (string-join windows " ")
-              (if-let ((plan-type (alist-get 'planType rate-limits)))
+              (if-let* ((plan-type (alist-get 'planType rate-limits)))
                   (format " (%s)" plan-type)
                 "")))))
 
 (defun codex-ide--update-header-line (&optional session)
   "Refresh the header line for SESSION."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
-  (when-let ((buffer (codex-ide-session-buffer session)))
+  (when-let* ((buffer (codex-ide-session-buffer session)))
     (with-current-buffer buffer
       (let* ((context (with-current-buffer buffer
                         (codex-ide--get-active-buffer-context)))
@@ -1160,7 +1160,7 @@ When DRAFT is nil, preserve the current active prompt text."
                (or (null item-id)
                    (equal item-id
                           (codex-ide-session-current-message-item-id session))))
-      (when-let ((message-start
+      (when-let* ((message-start
                   (codex-ide-session-current-message-start-marker session)))
         (when (eq (marker-buffer message-start) buffer)
           (with-current-buffer buffer
@@ -1287,7 +1287,7 @@ When CONTEXT-SUMMARY is non-nil, insert it beneath the prompt."
        (let ((inhibit-read-only t)
              context-start)
          (codex-ide--delete-running-input-list session)
-         (when-let ((start (codex-ide-session-input-prompt-start-marker session)))
+         (when-let* ((start (codex-ide-session-input-prompt-start-marker session)))
            (let ((display-start (or (codex-ide--session-metadata-get
                                      session
                                      :input-display-start-marker)
@@ -1452,7 +1452,7 @@ DIRECTION should be -1 for a previous prompt line and 1 for a next prompt line."
 
 (defun codex-ide--point-in-prompt-region-p (session pos)
   "Return non-nil when POS is within a rendered or active prompt for SESSION."
-  (or (when-let ((overlay (and session
+  (or (when-let* ((overlay (and session
                                (codex-ide-session-input-overlay session))))
         (let ((start (overlay-start overlay))
               (end (overlay-end overlay)))
@@ -1490,7 +1490,7 @@ DIRECTION should be -1 for a previous prompt line and 1 for a next prompt line."
   (save-excursion
     (goto-char start)
     (cond
-     ((when-let ((prompt-start (codex-ide-session-input-prompt-start-marker session))
+     ((when-let* ((prompt-start (codex-ide-session-input-prompt-start-marker session))
                  (input-start (codex-ide-session-input-start-marker session)))
         (when (and (markerp prompt-start)
                    (markerp input-start)
@@ -1515,7 +1515,7 @@ When QUIET is non-nil, do not refresh SESSION's header line."
          (let ((inhibit-read-only t)
                context-start)
            (codex-ide--delete-running-input-list session)
-           (when-let ((start (codex-ide-session-input-prompt-start-marker session)))
+           (when-let* ((start (codex-ide-session-input-prompt-start-marker session)))
              (codex-ide--style-user-prompt-region start (point-max))
              (codex-ide--freeze-region start (point-max))
              (when context-summary
@@ -1525,8 +1525,8 @@ When QUIET is non-nil, do not refresh SESSION's header line."
                (codex-ide--freeze-region context-start (point))))
            (codex-ide--delete-input-overlay session)
            (codex-ide--sync-prompt-minor-mode session)
-           (when-let ((start (codex-ide-session-input-prompt-start-marker session)))
-             (if-let ((turn-id (codex-ide-session-current-turn-id session)))
+           (when-let* ((start (codex-ide-session-input-prompt-start-marker session)))
+             (if-let* ((turn-id (codex-ide-session-current-turn-id session)))
                  (codex-ide--record-turn-start session turn-id start)
                (codex-ide--set-pending-turn-start-marker
                 session
@@ -1710,7 +1710,7 @@ Return (START END FILES), or nil when ARGV does not describe one."
                  (string-match "\\`[[:space:]]*\\([0-9]+\\)\\(?:,[[:space:]]*\\([0-9]+\\)\\)?p[[:space:]]*\\'"
                                script))
         (list (string-to-number (match-string 1 script))
-              (if-let ((end (match-string 2 script)))
+              (if-let* ((end (match-string 2 script)))
                   (string-to-number end)
                 (string-to-number (match-string 1 script)))
               (nreverse files))))))
@@ -2025,7 +2025,7 @@ Return (PATTERN PATHS), or nil when ARGV does not describe a search."
          (item-type (and (listp item) (alist-get 'type item))))
     (pcase item-type
       ("commandExecution"
-       (when-let ((command (alist-get 'command item)))
+       (when-let* ((command (alist-get 'command item)))
          (concat "$ " (codex-ide--display-command-string command))))
       ("mcpToolCall"
        (format "%s/%s"
@@ -2110,7 +2110,7 @@ Return non-nil when OVERLAY was toggled."
   "Open full item result for the result block at POS.
 Return non-nil when an item result block was found."
   (interactive)
-  (if-let ((overlay (codex-ide--item-result-overlay-at-point pos)))
+  (if-let* ((overlay (codex-ide--item-result-overlay-at-point pos)))
       (progn
         (funcall (codex-ide--item-result-open-function overlay) overlay)
         t)
@@ -2384,7 +2384,7 @@ When OVERLAY is folded, remove the body text from the transcript buffer."
 (defun codex-ide--append-item-result-text (session item-id text)
   "Append item result TEXT for ITEM-ID in SESSION."
   (when (and (stringp text) (not (string-empty-p text)))
-    (when-let ((overlay (codex-ide--ensure-item-result-block session item-id)))
+    (when-let* ((overlay (codex-ide--ensure-item-result-block session item-id)))
       (let* ((state (codex-ide--item-state session item-id))
              (state-output-text
               (or (plist-get state :item-result-text)
@@ -2492,7 +2492,7 @@ When OVERLAY is folded, remove the body text from the transcript buffer."
   "Toggle an item result block at POS.
 Return non-nil when an item result block was found."
   (interactive)
-  (when-let ((overlay (codex-ide--item-result-overlay-at-point pos)))
+  (when-let* ((overlay (codex-ide--item-result-overlay-at-point pos)))
     (codex-ide--toggle-item-result-overlay overlay)))
 
 (defun codex-ide-toggle-command-output-at-point (&optional pos)
@@ -2503,7 +2503,7 @@ Return non-nil when a command output block was found."
 
 (defun codex-ide--command-search-summary (command)
   "Return a semantic search summary for COMMAND, or nil."
-  (when-let ((request (codex-ide--rg-search-request
+  (when-let* ((request (codex-ide--rg-search-request
                        (codex-ide--display-command-argv command))))
     (codex-ide--search-summary (car request) (cadr request))))
 
@@ -2521,7 +2521,7 @@ Return non-nil when a command output block was found."
   "Return the first non-nil web search action KEY found in ITEMS."
   (seq-some
    (lambda (item)
-     (when-let ((action (and (listp item) (alist-get 'action item))))
+     (when-let* ((action (and (listp item) (alist-get 'action item))))
        (alist-get key action)))
    items))
 
@@ -2794,7 +2794,7 @@ CONTEXT is either nil for ordinary transcript rendering or `approval'."
                       (plist-put state :item-result-anchor-marker
                                  (copy-marker (point)))))))
           (codex-ide--put-item-state session item-id state)
-          (when-let ((overlay (codex-ide--ensure-item-result-block session item-id)))
+          (when-let* ((overlay (codex-ide--ensure-item-result-block session item-id)))
             (overlay-put overlay :diff-stats stats)
             (overlay-put overlay :buffer-name
                          (codex-ide-diff-buffer-name-for-session buffer))
@@ -2866,7 +2866,7 @@ CONTEXT is either nil for ordinary transcript rendering or `approval'."
          (codex-ide--append-shell-command-detail
           buffer
           (codex-ide--display-command-string (alist-get 'command item))))
-       (when-let ((cwd (alist-get 'cwd item)))
+       (when-let* ((cwd (alist-get 'cwd item)))
          (codex-ide--append-agent-text
           buffer
           (codex-ide--item-detail-line
@@ -2875,14 +2875,14 @@ CONTEXT is either nil for ordinary transcript rendering or `approval'."
       ("webSearch"
        (codex-ide--render-web-search-details session item))
       ("mcpToolCall"
-       (when-let ((arguments (alist-get 'arguments item)))
+       (when-let* ((arguments (alist-get 'arguments item)))
          (codex-ide--append-agent-text
           buffer
           (codex-ide--item-detail-line
            (format "args: %s" (json-encode arguments)))
           'codex-ide-item-detail-face)))
       ("dynamicToolCall"
-       (when-let ((arguments (alist-get 'arguments item)))
+       (when-let* ((arguments (alist-get 'arguments item)))
          (codex-ide--append-agent-text
           buffer
           (codex-ide--item-detail-line
@@ -2898,7 +2898,7 @@ CONTEXT is either nil for ordinary transcript rendering or `approval'."
                    (or (alist-get 'path change) "unknown")))
           'codex-ide-item-detail-face)))
       ("imageView"
-       (when-let ((path (alist-get 'path item)))
+       (when-let* ((path (alist-get 'path item)))
          (codex-ide--append-agent-text
           buffer
           (codex-ide--item-detail-line path)
@@ -2970,7 +2970,7 @@ CONTEXT is either nil for ordinary transcript rendering or `approval'."
                                (plist-get state :item-result-anchor-marker))))
             (setq state (plist-put state :saw-output nil))
             (codex-ide--put-item-state session item-id state))
-          (when-let ((pending-output
+          (when-let* ((pending-output
                       (plist-get (codex-ide--item-state session item-id)
                                  :pending-output-text)))
             (codex-ide--render-command-output-delta
@@ -3118,7 +3118,7 @@ CONTEXT is either nil for ordinary transcript rendering or `approval'."
            (codex-ide--complete-command-output-block session item-id output-text)
            (cond
             (search-request
-             (when-let ((hit-count (or (codex-ide--count-search-output-hits
+             (when-let* ((hit-count (or (codex-ide--count-search-output-hits
                                         output-text)
                                        (and (equal exit-code 1) 0))))
                (codex-ide--append-agent-text
@@ -3151,14 +3151,14 @@ CONTEXT is either nil for ordinary transcript rendering or `approval'."
               (codex-ide--item-detail-line "declined")
               'warning)))))
         ("mcpToolCall"
-         (when-let ((result-text (codex-ide--mcp-result-text item)))
+         (when-let* ((result-text (codex-ide--mcp-result-text item)))
            (let ((state (or (codex-ide--item-state session item-id) '())))
              (codex-ide--put-item-state
               session
               item-id
               (plist-put state :item-result-text result-text)))
            (codex-ide--complete-item-result-block session item-id result-text))
-         (when-let ((error-info (alist-get 'error item)))
+         (when-let* ((error-info (alist-get 'error item)))
            (codex-ide--append-agent-text
             buffer
             (codex-ide--item-detail-line
@@ -3208,7 +3208,7 @@ CONTEXT is either nil for ordinary transcript rendering or `approval'."
                   diff-text
                 streamed-diff)))))
         ("exitedReviewMode"
-         (when-let ((review (alist-get 'review item)))
+         (when-let* ((review (alist-get 'review item)))
            (codex-ide--append-agent-text
             buffer
             (codex-ide--item-detail-block review)
@@ -3247,7 +3247,7 @@ When ITEM-ID is non-nil, render only when it matches SESSION's current message."
                (or (null item-id)
                    (equal item-id
                           (codex-ide-session-current-message-item-id session))))
-      (when-let ((message-start
+      (when-let* ((message-start
                   (codex-ide-session-current-message-start-marker session)))
         (when (eq (marker-buffer message-start) buffer)
           (with-current-buffer buffer
@@ -3723,7 +3723,7 @@ Signal an error when THREAD-READ lacks replayable transcript items."
 
 (defun codex-ide--mark-approval-file-change-diff-rendered (session params)
   "Mark the file-change item in PARAMS as having rendered its approval diff."
-  (when-let ((item-id (alist-get 'itemId params)))
+  (when-let* ((item-id (alist-get 'itemId params)))
     (let ((rendered-items
            (or (codex-ide--session-metadata-get
                 session
@@ -3733,7 +3733,7 @@ Signal an error when THREAD-READ lacks replayable transcript items."
                 :approval-file-change-diff-rendered-items
                 (make-hash-table :test 'equal)))))
       (puthash item-id t rendered-items))
-    (when-let ((state (codex-ide--item-state session item-id)))
+    (when-let* ((state (codex-ide--item-state session item-id)))
       (codex-ide--put-item-state
        session
        item-id
@@ -3817,7 +3817,7 @@ Signal an error when THREAD-READ lacks replayable transcript items."
    :render-body
    (lambda ()
      (dolist (detail details)
-       (if-let ((diff-text (and (eq (plist-get detail :kind) 'diff)
+       (if-let* ((diff-text (and (eq (plist-get detail :kind) 'diff)
                                 (plist-get detail :text)))
                 (item-id (alist-get 'itemId params)))
            (let ((state (copy-tree (or (codex-ide--item-state session item-id) '()))))
@@ -4006,7 +4006,7 @@ Signal an error when THREAD-READ lacks replayable transcript items."
        (unless (string-empty-p message)
          (codex-ide-renderer-insert-approval-label "Message: ")
          (codex-ide-renderer-insert-read-only (concat message "\n")))
-       (when-let ((url (alist-get 'url request)))
+       (when-let* ((url (alist-get 'url request)))
          (codex-ide-renderer-insert-approval-label "URL: ")
          (codex-ide-renderer-insert-read-only (concat url "\n")))
        (codex-ide-renderer-insert-read-only "\n")
@@ -4094,7 +4094,7 @@ Signal an error when THREAD-READ lacks replayable transcript items."
         :details (delq nil
                        (list
                         (list :kind 'command :text command)
-                        (when-let ((reason (alist-get 'reason params)))
+                        (when-let* ((reason (alist-get 'reason params)))
                           (list :label "Reason" :text reason))))
         :choices choices
         :params params)))
@@ -4127,7 +4127,7 @@ Signal an error when THREAD-READ lacks replayable transcript items."
         :details (delq nil
                        (list
                         (list :label "Approve file changes" :text reason)
-                        (when-let ((diff-text
+                        (when-let* ((diff-text
                                     (codex-ide--approval-file-change-diff-text
                                      session
                                      params)))
@@ -4163,7 +4163,7 @@ Signal an error when THREAD-READ lacks replayable transcript items."
         'permissions
         :title "[Approval required]"
         :details (append
-                  (when-let ((reason (alist-get 'reason params)))
+                  (when-let* ((reason (alist-get 'reason params)))
                     (list (list :label "Reason" :text reason)))
                   (when permissions
                     (list (list :label "Permissions"
@@ -4268,7 +4268,7 @@ Signal an error when THREAD-READ lacks replayable transcript items."
       ("thread/started"
        (codex-ide--remember-reasoning-effort session params)
        (codex-ide--remember-model-name session params)
-       (when-let ((thread-id (alist-get 'id (alist-get 'thread params))))
+       (when-let* ((thread-id (alist-get 'id (alist-get 'thread params))))
          (setf (codex-ide-session-thread-id session) thread-id)
          (codex-ide--mark-session-thread-attached session)
          (codex-ide--run-session-event
@@ -4349,7 +4349,7 @@ Signal an error when THREAD-READ lacks replayable transcript items."
        (unless (codex-ide-session-output-prefix-inserted session)
          (codex-ide--begin-turn-display session)))
       ("item/started"
-       (when-let ((item (alist-get 'item params)))
+       (when-let* ((item (alist-get 'item params)))
          (when (codex-ide--remember-or-request-model-name session item)
            (codex-ide--update-header-line session))
          (codex-ide-log-message
@@ -4418,7 +4418,7 @@ Signal an error when THREAD-READ lacks replayable transcript items."
             "File-change delta for item %s (%d chars)"
             item-id
             (length delta)))
-         (when-let ((state (codex-ide--item-state session item-id)))
+         (when-let* ((state (codex-ide--item-state session item-id)))
            (codex-ide--put-item-state
             session
             item-id
@@ -4443,7 +4443,7 @@ Signal an error when THREAD-READ lacks replayable transcript items."
                       ""))))
        (codex-ide--render-reasoning-delta session params))
       ("item/completed"
-       (when-let ((item (alist-get 'item params)))
+       (when-let* ((item (alist-get 'item params)))
          (when (codex-ide--remember-or-request-model-name session item)
            (codex-ide--update-header-line session))
          (codex-ide-log-message
@@ -4543,7 +4543,7 @@ Signal an error when THREAD-READ lacks replayable transcript items."
 
 (defun codex-ide--send-turn-start (session thread-id payload)
   "Send a `turn/start` request for SESSION THREAD-ID using PAYLOAD."
-  (when-let ((effort (codex-ide-config-effective-value 'reasoning-effort session)))
+  (when-let* ((effort (codex-ide-config-effective-value 'reasoning-effort session)))
     (codex-ide--session-metadata-put
      session
      :reasoning-effort
@@ -4552,26 +4552,26 @@ Signal an error when THREAD-READ lacks replayable transcript items."
    session
    "turn/start"
    `((threadId . ,thread-id)
-     ,@(when-let ((approval-policy
+     ,@(when-let* ((approval-policy
                    (codex-ide-config-effective-value 'approval-policy session)))
          `((approvalPolicy . ,approval-policy)))
-     ,@(when-let ((sandbox-policy
+     ,@(when-let* ((sandbox-policy
                    (codex-ide--turn-start-sandbox-policy session)))
          `((sandboxPolicy . ,sandbox-policy)))
-     ,@(when-let ((model (codex-ide-config-effective-value 'model session)))
+     ,@(when-let* ((model (codex-ide-config-effective-value 'model session)))
          `((model . ,model)))
-     ,@(when-let ((effort (codex-ide-config-effective-value
+     ,@(when-let* ((effort (codex-ide-config-effective-value
                            'reasoning-effort
                            session)))
          `((effort . ,effort)))
-     ,@(when-let ((personality
+     ,@(when-let* ((personality
                    (codex-ide-config-effective-value 'personality session)))
          `((personality . ,personality)))
      (input . ,(alist-get 'input payload)))))
 
 (defun codex-ide--after-turn-start-submitted (session payload)
   "Update SESSION state after successfully submitting PAYLOAD."
-  (when-let ((model (codex-ide-config-effective-value 'model session)))
+  (when-let* ((model (codex-ide-config-effective-value 'model session)))
     (codex-ide--set-session-model-name session model)
     (codex-ide--update-header-line session))
   (codex-ide--mark-session-prompt-submitted session)
