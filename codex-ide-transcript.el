@@ -1937,6 +1937,12 @@ Return (PATTERN PATHS), or nil when ARGV does not describe a search."
       (when-let* ((chunks (plist-get state :output-chunks)))
         (mapconcat #'identity (nreverse (copy-sequence chunks)) ""))))
 
+(defun codex-ide--command-output-state-has-full-text-p (state)
+  "Return non-nil when STATE retains any full command output text."
+  (let ((text (codex-ide--command-output-state-full-text state)))
+    (and (stringp text)
+         (not (string-empty-p text)))))
+
 (defun codex-ide--command-output-state-line-count (state)
   "Return the cached full command output display line count in STATE."
   (let ((char-count (or (plist-get state :output-char-count) 0)))
@@ -2110,6 +2116,7 @@ incrementally for transcript rendering."
         (plist-get state :output-text)
         (overlay-get overlay :item-result-fallback-text)
         (overlay-get overlay :output-fallback-text)
+        (overlay-get overlay :display-text)
         "")))
 
 (defun codex-ide--item-result-buffer-name (overlay)
@@ -2642,6 +2649,19 @@ When OVERLAY is folded, remove the body text from the transcript buffer."
 
 (defun codex-ide--complete-command-output-block (session item-id output)
   "Ensure command output for ITEM-ID is rendered and folded after completion."
+  (when (and (stringp output)
+             (not (string-empty-p output))
+             (not (codex-ide--command-output-state-has-full-text-p
+                   (codex-ide--item-state session item-id))))
+    (codex-ide--store-command-output-delta session item-id output)
+    (codex-ide--render-command-output-state session item-id))
+  (when-let* ((state (codex-ide--item-state session item-id))
+              (full-text (or (codex-ide--command-output-state-full-text state)
+                             output))
+              (overlay (or (plist-get state :command-output-overlay)
+                           (plist-get state :item-result-overlay))))
+    (overlay-put overlay :output-fallback-text full-text)
+    (overlay-put overlay :item-result-fallback-text full-text))
   (codex-ide--complete-item-result-block session item-id output))
 
 (defun codex-ide--item-result-overlay-at-point (&optional pos)

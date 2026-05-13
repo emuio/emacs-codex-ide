@@ -1947,6 +1947,62 @@
                  "\\$ printf lots\n\none\ntwo\nthree\nfour\n"
                  (buffer-string)))))))
 
+(ert-deftest codex-ide-search-output-full-button-backfills-aggregated-output ()
+  (let ((codex-ide-renderer-command-output-max-rendered-lines 2)
+        (codex-ide-renderer-command-output-max-rendered-chars nil))
+    (with-temp-buffer
+      (codex-ide-session-mode)
+      (let ((session (make-codex-ide-session
+                      :directory default-directory
+                      :buffer (current-buffer)
+                      :status "idle"
+                      :item-states (make-hash-table :test 'equal))))
+        (setq-local codex-ide--session session)
+        (codex-ide--insert-input-prompt session "submitted prompt")
+        (codex-ide--begin-turn-display session)
+        (codex-ide--render-item-start
+         session
+         '((id . "call-1")
+           (type . "commandExecution")
+           (command . ["rg" "-n" "needle" "codex-ide.el"])))
+        (codex-ide--handle-notification
+         session
+         '((method . "item/commandExecution/outputDelta")
+           (params . ((itemId . "call-1")
+                      (delta . "codex-ide.el:30:needle\ncodex-ide.el:40:needle\n")))))
+        (let* ((state (codex-ide--item-state session "call-1"))
+               (overlay (plist-get state :command-output-overlay)))
+          (should (overlayp overlay))
+          (codex-ide--put-item-state
+           session
+           "call-1"
+           (plist-put
+            (plist-put
+             (plist-put
+              (plist-put
+               (plist-put state :output-chunks nil)
+               :output-tail-text nil)
+              :output-char-count nil)
+             :output-newline-count nil)
+            :output-line-count nil)))
+        (codex-ide--render-item-completion
+         session
+         '((id . "call-1")
+           (type . "commandExecution")
+           (status . "completed")
+           (exitCode . 0)
+           (aggregatedOutput . "codex-ide.el:10:needle\ncodex-ide.el:20:needle\ncodex-ide.el:30:needle\ncodex-ide.el:40:needle\n")))
+        (goto-char (point-min))
+        (search-forward "[full output]")
+        (push-button (match-beginning 0))
+        (should (string-match-p
+                 "\\*codex-output\\[.*:call-1\\]\\*"
+                 (buffer-name)))
+        (should (derived-mode-p 'special-mode))
+        (should (string-match-p
+                 "codex-ide\\.el:10:needle\ncodex-ide\\.el:20:needle\ncodex-ide\\.el:30:needle\ncodex-ide\\.el:40:needle\n"
+                 (buffer-string)))))))
+
 (ert-deftest codex-ide-command-output-streaming-keeps-incremental-tail-state ()
   (let ((codex-ide-renderer-command-output-max-rendered-lines 3)
         (codex-ide-renderer-command-output-max-rendered-chars nil))
