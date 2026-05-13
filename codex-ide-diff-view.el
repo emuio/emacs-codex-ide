@@ -194,6 +194,8 @@ DIRECTORY is used to resolve relative diff paths."
          (body-start (and (overlayp overlay)
                           (overlay-get overlay :body-start)))
          (diff-text (or (and (overlayp overlay)
+                             (overlay-get overlay :result-full-text))
+                        (and (overlayp overlay)
                              (overlay-get overlay :display-text))
                         (buffer-substring-no-properties
                          (point-min)

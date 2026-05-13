@@ -56,8 +56,8 @@
 (defun codex-ide-test--input-placeholder-overlay-live-p (session)
   "Return non-nil when SESSION's placeholder overlay is attached."
   (when-let* ((overlay (codex-ide--session-metadata-get
-                       session
-                       :input-placeholder-overlay)))
+			session
+			:input-placeholder-overlay)))
     (and (overlayp overlay)
          (overlay-buffer overlay)
          (overlay-start overlay)
@@ -1713,7 +1713,16 @@
 
 (ert-deftest codex-ide-file-change-diff-body-ret-jumps-to-source ()
   (with-temp-buffer
-    (let* ((diff-text
+    (let* ((raw-diff-text
+            (string-join
+             '("diff --git a//tmp/project/foo b//tmp/project/foo"
+               "--- a//tmp/project/foo"
+               "+++ b//tmp/project/foo"
+               "@@ -1 +1 @@"
+               "-old"
+               "+new")
+             "\n"))
+           (display-diff-text
             (string-join
              '("diff --git a/foo b/foo"
                "--- a/foo"
@@ -1725,11 +1734,12 @@
            (overlay (make-overlay (point-min) (point-min)))
            (body-start (copy-marker (point-min)))
            captured)
-      (overlay-put overlay :display-text diff-text)
+      (overlay-put overlay :result-full-text raw-diff-text)
+      (overlay-put overlay :display-text display-diff-text)
       (overlay-put overlay :body-start body-start)
       (overlay-put overlay :directory default-directory)
       (codex-ide--insert-file-change-diff-body
-       diff-text
+       display-diff-text
        :overlay overlay
        :overlay-property codex-ide-item-result-overlay-property)
       (move-overlay overlay (point-min) (point-max))
@@ -1743,7 +1753,65 @@
                          (list resolved-diff line-index directory)))))
         (call-interactively (key-binding (kbd "RET"))))
       (should (equal captured
-                     (list diff-text 5 default-directory))))))
+                     (list raw-diff-text 5 default-directory))))))
+
+(ert-deftest codex-ide-file-change-diff-render-shortens-only-transcript-display ()
+  (let* ((root (file-name-as-directory
+                (make-temp-file "codex-ide-diff-transcript-" t)))
+         (file (expand-file-name "lib/foo.txt" root))
+         (raw-diff-text
+          (string-join
+           (list (format "diff --git a/%s b/%s" file file)
+                 (format "--- a/%s" file)
+                 (format "+++ b/%s" file)
+                 "@@ -1 +1 @@"
+                 "-old"
+                 "+new")
+           "\n"))
+         (display-diff-text
+          (string-join
+           '("diff --git a/lib/foo.txt b/lib/foo.txt"
+             "--- a/lib/foo.txt"
+             "+++ b/lib/foo.txt"
+             "@@ -1 +1 @@"
+             "-old"
+             "+new")
+           "\n"))
+         (buffer (generate-new-buffer "*codex-diff-transcript-test*"))
+         (session (make-instance 'codex-ide-session
+                                 :buffer buffer
+                                 :directory root
+                                 :item-states
+                                 (make-hash-table :test 'equal)))
+         overlay)
+    (unwind-protect
+        (progn
+          (with-current-buffer buffer
+            (setq-local default-directory root))
+          (codex-ide--render-file-change-diff-text
+           session
+           "file-change-1"
+           raw-diff-text)
+          (with-current-buffer buffer
+            (should (string-match-p
+                     (regexp-quote "diff --git a/lib/foo.txt b/lib/foo.txt")
+                     (buffer-string)))
+            (should-not (string-match-p
+                         (regexp-quote file)
+                         (buffer-string)))
+            (setq overlay
+                  (seq-find (lambda (candidate)
+                              (overlay-get candidate :result-full-text))
+                            (overlays-in (point-min) (point-max)))))
+          (should overlay)
+          (should (equal (overlay-get overlay :result-full-text)
+                         raw-diff-text))
+          (should (equal (overlay-get overlay :display-text)
+                         display-diff-text)))
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer))
+      (when (file-directory-p root)
+        (delete-directory root t)))))
 
 (ert-deftest codex-ide-user-prompt-face-extends-line-background ()
   (should (eq (face-attribute 'codex-ide-user-prompt-face :extend nil t)

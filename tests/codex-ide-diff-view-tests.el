@@ -102,6 +102,33 @@
     (should (equal (codex-ide-diff--source-location-for-line diff-text 5)
                    '(:path "foo.txt" :line 4)))))
 
+(ert-deftest codex-ide-diff-goto-source-resolves-project-relative-header ()
+  (let* ((root (file-name-as-directory
+                (make-temp-file "codex-ide-diff-view-" t)))
+         (file (expand-file-name "lib/foo.txt" root))
+         (diff-text (string-join
+                     '("diff --git a/lib/foo.txt b/lib/foo.txt"
+                       "--- a/lib/foo.txt"
+                       "+++ b/lib/foo.txt"
+                       "@@ -1 +1 @@"
+                       "-old"
+                       "+new")
+                     "\n"))
+         visited-buffer)
+    (unwind-protect
+        (progn
+          (make-directory (file-name-directory file) t)
+          (with-temp-file file
+            (insert "new\n"))
+          (codex-ide-diff-goto-source diff-text 5 root)
+          (setq visited-buffer (current-buffer))
+          (should (equal (buffer-file-name visited-buffer) file))
+          (should (= (line-number-at-pos) 1)))
+      (when (buffer-live-p visited-buffer)
+        (kill-buffer visited-buffer))
+      (when (file-directory-p root)
+        (delete-directory root t)))))
+
 (ert-deftest codex-ide-diff-open-buffer-reuses-explicit-buffer-name ()
   (let ((display-calls nil)
         (buffer-name "*codex[my-project]*-diff")
