@@ -10,6 +10,7 @@ ARGS=(
   -Q
   --batch
   --eval "(setq load-prefer-newer t)"
+  --eval "(message \"Running tests with Emacs version: %s\" emacs-version)"
   -L "$ROOT_DIR"
   -L "$TEST_DIR"
 )
@@ -90,5 +91,4 @@ else
   done
 fi
 
-echo "Running tests with Emacs executable: $RUN_TESTS_EMACS_EXECUTABLE"
 exec "$RUN_TESTS_EMACS_EXECUTABLE" "${ARGS[@]}" -f ert-run-tests-batch-and-exit
