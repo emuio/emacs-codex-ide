@@ -444,10 +444,6 @@ window size change."
   'codex-ide-item-result-overlay
   "Text property storing an expandable item-result overlay.")
 
-(defconst codex-ide-command-output-overlay-property
-  codex-ide-item-result-overlay-property
-  "Compatibility alias for `codex-ide-item-result-overlay-property'.")
-
 (define-fringe-bitmap 'codex-ide-result-rail
   [#b01000000
    #b00100000

@@ -1664,7 +1664,7 @@
         (search-forward "output: 2 lines, streaming [fold]")
         (let ((overlay (get-char-property
                         (match-beginning 0)
-                        codex-ide-command-output-overlay-property)))
+                        codex-ide-item-result-overlay-property)))
           (should (overlayp overlay))
           (should-not (overlay-get overlay 'invisible))
           (codex-ide--render-item-completion
@@ -1943,7 +1943,7 @@
            session
            "call-1"
            (plist-put state :output-tail-text nil))
-          (codex-ide--open-command-output-overlay overlay))
+          (codex-ide--open-item-result-overlay overlay))
         (should (string-match-p
                  "\\*codex-output\\[.*:call-1\\]\\*"
                  (buffer-name)))
@@ -2002,7 +2002,7 @@
         (let* ((pos (match-beginning 0))
                (overlay (get-char-property
                          pos
-                         codex-ide-command-output-overlay-property)))
+                         codex-ide-item-result-overlay-property)))
           (should (equal (overlay-get overlay :result-full-text)
                          "codex-ide.el:10:needle\ncodex-ide.el:20:needle\ncodex-ide.el:30:needle\ncodex-ide.el:40:needle\n"))
           (should-not (overlay-get overlay :item-result-fallback-text))
@@ -2091,13 +2091,13 @@
         (search-forward "output: 2 lines, streaming [expand]")
         (let ((overlay (get-char-property
                         (match-beginning 0)
-                        codex-ide-command-output-overlay-property)))
+                        codex-ide-item-result-overlay-property)))
           (should (overlayp overlay))
           (should (overlay-get overlay :folded))
           (should (overlay-get overlay 'invisible))
           (should-not (string-match-p "    hello\n    world"
                                       (buffer-string)))
-          (codex-ide-toggle-command-output-at-point (match-beginning 0))
+          (codex-ide-toggle-item-result-at-point (match-beginning 0))
           (should-not (overlay-get overlay 'invisible))
           (should (string-match-p "    hello\n    world"
                                   (buffer-string)))
@@ -2141,12 +2141,12 @@
       (search-forward "output: 3 lines [expand]")
       (let ((overlay (get-char-property
                       (match-beginning 0)
-                      codex-ide-command-output-overlay-property)))
+                      codex-ide-item-result-overlay-property)))
         (should (overlayp overlay))
         (should (overlay-get overlay 'invisible))
         (should-not (string-match-p "    early 1"
                                     (buffer-string)))
-        (codex-ide-toggle-command-output-at-point (match-beginning 0))
+        (codex-ide-toggle-item-result-at-point (match-beginning 0))
         (should-not (overlay-get overlay 'invisible))
         (should (string-match-p
                  "    early 1\n    early 2\n    late 3\n"
@@ -2179,7 +2179,7 @@
       (search-forward "output: 2 lines [expand]")
       (let ((overlay (get-char-property
                       (match-beginning 0)
-                      codex-ide-command-output-overlay-property)))
+                      codex-ide-item-result-overlay-property)))
         (should (overlayp overlay))
         (should (equal (overlay-get overlay :result-full-text)
                        "hello\nworld\n"))
@@ -2187,7 +2187,7 @@
         (should-not (overlay-get overlay :output-fallback-text))
         (should (overlay-get overlay 'invisible))
         (should-not (string-match-p "    hello\n    world" (buffer-string)))
-        (codex-ide-toggle-command-output-at-point (match-beginning 0))
+        (codex-ide-toggle-item-result-at-point (match-beginning 0))
         (should-not (overlay-get overlay 'invisible))
         (should (string-match-p "    hello\n    world" (buffer-string)))))))
 
@@ -2450,7 +2450,7 @@
         (search-forward "output: 2 lines, streaming [fold]")
         (let* ((overlay (get-char-property
                          (match-beginning 0)
-                         codex-ide-command-output-overlay-property))
+                         codex-ide-item-result-overlay-property))
                (output-text (buffer-substring-no-properties
                              (overlay-start overlay)
                              (overlay-end overlay))))
@@ -2493,11 +2493,11 @@
 	(let* ((header-pos (match-beginning 0))
                (overlay (get-char-property
 			 header-pos
-			 codex-ide-command-output-overlay-property)))
+			 codex-ide-item-result-overlay-property)))
           (should (overlay-get overlay 'invisible))
           (goto-char header-pos)
           (should (eq (key-binding (kbd "RET"))
-                      #'codex-ide-toggle-command-output-at-point))
+                      #'codex-ide-toggle-item-result-at-point))
           (call-interactively (key-binding (kbd "RET")))
           (should-not (overlay-get overlay 'invisible))
           (should (string-match-p "output: 2 lines \\[fold\\]"
@@ -2538,17 +2538,17 @@
 	(search-forward "output: 2 lines")
 	(let ((overlay (get-char-property
 			(match-beginning 0)
-			codex-ide-command-output-overlay-property))
+			codex-ide-item-result-overlay-property))
               (keymap (get-char-property (match-beginning 0) 'keymap)))
           (should (overlay-get overlay 'invisible))
           (should (eq (lookup-key keymap (kbd "RET"))
-                      #'codex-ide-toggle-command-output-at-point))
-          (codex-ide-toggle-command-output-at-point)
+                      #'codex-ide-toggle-item-result-at-point))
+          (codex-ide-toggle-item-result-at-point)
           (should-not (overlay-get overlay 'invisible))
           (should (string-match-p "output: 2 lines \\[fold\\]"
                                   (buffer-string)))
           (should (string-match-p "    hello\n    world" (buffer-string)))
-          (codex-ide-toggle-command-output-at-point)
+          (codex-ide-toggle-item-result-at-point)
           (should (overlay-get overlay 'invisible))
           (should (string-match-p "output: 2 lines \\[expand\\]"
                                   (buffer-string)))
@@ -2606,7 +2606,7 @@
                   (redisplay t)
                   (let ((window-start-before (window-start window))
 			(window-point-before (window-point window)))
-                    (codex-ide-toggle-command-output-at-point toggle-pos)
+                    (codex-ide-toggle-item-result-at-point toggle-pos)
                     (should (= (window-start window) window-start-before))
                     (should (= (window-point window) window-point-before))
                     (should (< (window-point window)
@@ -2615,7 +2615,7 @@
                     (should (overlay-get
                              (get-char-property
                               toggle-pos
-                              codex-ide-command-output-overlay-property)
+                              codex-ide-item-result-overlay-property)
                              'invisible))))))
           (when (buffer-live-p buffer)
             (kill-buffer buffer))))))
@@ -2648,14 +2648,14 @@
 	(let ((prefix-pos (match-beginning 0)))
           (should-not (button-at prefix-pos))
           (should (eq (get-text-property prefix-pos 'keymap)
-                      codex-ide-command-output-map))
+                      codex-ide-item-result-map))
           (should (eq (get-text-property prefix-pos 'face)
                       'codex-ide-item-detail-face)))
 	(search-forward "[expand]")
 	(let ((pos (match-beginning 0)))
           (should (button-at pos))
           (should-not (eq (get-text-property pos 'keymap)
-                          codex-ide-command-output-map))
+                          codex-ide-item-result-map))
           (should (eq (lookup-key (get-text-property pos 'keymap) [mouse-2])
                       #'push-button))))))
 
