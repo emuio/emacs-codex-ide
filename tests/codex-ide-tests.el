@@ -2155,8 +2155,50 @@
         (should-not (overlay-get overlay 'invisible))
         (should (string-match-p "result: 2 lines \\[fold\\]"
                                 (buffer-string)))
-        (should (string-match-p "    line 1\n    line 2"
-                                (buffer-string)))))))
+	(should (string-match-p "    line 1\n    line 2"
+	                        (buffer-string)))))))
+
+(ert-deftest codex-ide-mcp-tool-call-prettifies-json-result-block ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :directory default-directory
+                    :buffer (current-buffer)
+                    :status "idle"
+                    :item-states (make-hash-table :test 'equal))))
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "submitted prompt")
+      (codex-ide--begin-turn-display session)
+      (codex-ide--render-item-start
+       session
+       '((id . "mcp-1")
+         (type . "mcpToolCall")
+         (server . "emacs")
+         (tool . "emacs_get_all_buffers")
+         (arguments . ((buffer . "scratch")))))
+      (codex-ide--render-item-completion
+       session
+       '((id . "mcp-1")
+         (type . "mcpToolCall")
+         (status . "completed")
+         (result . ((text . "{\"buffers\":[{\"name\":\"scratch\",\"meta\":{\"visible\":true}}]}")))))
+      (goto-char (point-min))
+      (should (search-forward "result: 10 lines [expand]" nil t))
+      (let ((overlay (get-char-property
+                      (match-beginning 0)
+                      codex-ide-item-result-overlay-property)))
+        (should (overlayp overlay))
+        (should (overlay-get overlay 'invisible))
+        (codex-ide-toggle-item-result-at-point (match-beginning 0))
+        (should-not (overlay-get overlay 'invisible))
+        (let ((buffer-text (buffer-string)))
+          (should (string-match-p "    {\n      \"buffers\": \\[" buffer-text))
+          (should (string-match-p
+                   "          \"meta\": {\n            \"visible\": true"
+                   buffer-text))
+          (should-not (string-match-p
+                       "{\"buffers\":\\[{\"name\":\"scratch\""
+                       buffer-text)))))))
 
 (ert-deftest codex-ide-mcp-tool-call-result-stays-with-call-when-created-late ()
   (with-temp-buffer

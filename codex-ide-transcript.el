@@ -2026,6 +2026,27 @@ incrementally for transcript rendering."
         (json-encode value)
       (error nil))))
 
+(defun codex-ide--json-object-or-array-string-p (text)
+  "Return non-nil when TEXT appears to contain a JSON object or array."
+  (and (stringp text)
+       (string-match-p "\\`[[:space:]\n\r\t]*[[{]" text)))
+
+(defun codex-ide--prettify-json-string-or-nil (text)
+  "Return pretty-printed JSON TEXT, or nil when TEXT is not valid JSON."
+  (when (codex-ide--json-object-or-array-string-p text)
+    (condition-case nil
+        (with-temp-buffer
+          (insert text)
+          (goto-char (point-min))
+          (json-pretty-print-buffer)
+          (buffer-string))
+      (error nil))))
+
+(defun codex-ide--mcp-result-display-text (text)
+  "Return transcript display text for MCP result TEXT."
+  (or (codex-ide--prettify-json-string-or-nil text)
+      text))
+
 (defun codex-ide--mcp-result-text (item)
   "Return a transcript-ready result string for MCP tool call ITEM."
   (let ((result
@@ -2480,19 +2501,23 @@ When OVERLAY is folded, remove the body text from the transcript buffer."
              (state-output-text
               (or (plist-get state :item-result-text)
                   (plist-get state :output-text)))
+             (state-display-text
+              (plist-get state :item-result-display-text))
              (previous (or (overlay-get overlay :item-result-fallback-text)
                            (overlay-get overlay :output-fallback-text)
                            ""))
              output-text
+             display-output-text
              visible-range
              visible-output
              display-text
              truncated)
         (setq output-text (or state-output-text (concat previous text))
+              display-output-text (or state-display-text output-text)
               visible-range
-              (codex-ide--command-output-render-range output-text)
+              (codex-ide--command-output-render-range display-output-text)
               visible-output
-              (substring output-text
+              (substring display-output-text
                          (car visible-range)
                          (cdr visible-range))
               truncated (> (car visible-range) 0)
@@ -2506,7 +2531,8 @@ When OVERLAY is folded, remove the body text from the transcript buffer."
         (overlay-put overlay :item-result-fallback-text output-text)
         (when (equal (plist-get state :type) "commandExecution")
           (overlay-put overlay :output-fallback-text output-text))
-        (let* ((line-count (codex-ide--command-output-line-count output-text))
+        (let* ((line-count
+                (codex-ide--command-output-line-count display-output-text))
                (visible-line-count
                 (codex-ide--command-output-line-count visible-output)))
           (overlay-put overlay :line-count line-count)
@@ -3295,11 +3321,15 @@ CONTEXT is either nil for ordinary transcript rendering or `approval'."
               'warning)))))
         ("mcpToolCall"
          (when-let* ((result-text (codex-ide--mcp-result-text item)))
-           (let ((state (or (codex-ide--item-state session item-id) '())))
+           (let ((state (or (codex-ide--item-state session item-id) '()))
+                 (display-text
+                  (codex-ide--mcp-result-display-text result-text)))
              (codex-ide--put-item-state
               session
               item-id
-              (plist-put state :item-result-text result-text)))
+              (plist-put
+               (plist-put state :item-result-text result-text)
+               :item-result-display-text display-text)))
            (codex-ide--complete-item-result-block session item-id result-text))
          (when-let* ((error-info (alist-get 'error item)))
            (codex-ide--append-agent-text

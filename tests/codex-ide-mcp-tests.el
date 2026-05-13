@@ -283,28 +283,44 @@
                           "emacs_show_file_buffer"
                           "emacs_kill_file_buffer"
                           "emacs_lisp_check_parens"))))
-              (let* ((open-file-text
+              (let* ((open-file-result
+                      (alist-get "result" (nth 2 responses) nil nil #'equal))
+                     (open-files-result
+                      (alist-get "result" (nth 3 responses) nil nil #'equal))
+                     (diagnostics-result
+                      (alist-get "result" (nth 4 responses) nil nil #'equal))
+                     (parens-result
+                      (alist-get "result" (nth 5 responses) nil nil #'equal))
+                     (open-file-structured
+                      (alist-get "structuredContent" open-file-result nil nil #'equal))
+                     (open-files-structured
+                      (alist-get "structuredContent" open-files-result nil nil #'equal))
+                     (diagnostics-structured
+                      (alist-get "structuredContent" diagnostics-result nil nil #'equal))
+                     (parens-structured
+                      (alist-get "structuredContent" parens-result nil nil #'equal))
+                     (open-file-text
                       (alist-get "text"
                                  (car (alist-get "content"
-                                                 (alist-get "result" (nth 2 responses) nil nil #'equal)
+                                                 open-file-result
                                                  nil nil #'equal))
                                  nil nil #'equal))
                      (open-files-text
                       (alist-get "text"
                                  (car (alist-get "content"
-                                                 (alist-get "result" (nth 3 responses) nil nil #'equal)
+                                                 open-files-result
                                                  nil nil #'equal))
                                  nil nil #'equal))
                      (diagnostics-text
                       (alist-get "text"
                                  (car (alist-get "content"
-                                                 (alist-get "result" (nth 4 responses) nil nil #'equal)
+                                                 diagnostics-result
                                                  nil nil #'equal))
                                  nil nil #'equal))
                      (parens-text
                       (alist-get "text"
                                  (car (alist-get "content"
-                                                 (alist-get "result" (nth 5 responses) nil nil #'equal)
+                                                 parens-result
                                                  nil nil #'equal))
                                  nil nil #'equal)))
                 (should (string-match-p "\"tool\": \"emacs_show_file_buffer\"" open-file-text))
@@ -313,7 +329,15 @@
                 (should (string-match-p "\"diagnostics\"" diagnostics-text))
                 (should (string-match-p "\"Boom\"" diagnostics-text))
                 (should (string-match-p "\"balanced\": false" parens-text))
-                (should (string-match-p "\"point\": 123" parens-text))))))
+                (should (string-match-p "\"point\": 123" parens-text))
+                (should (equal (alist-get "tool" open-file-structured nil nil #'equal)
+                               "emacs_show_file_buffer"))
+                (should (alist-get "files" open-files-structured nil nil #'equal))
+                (should (alist-get "diagnostics" diagnostics-structured nil nil #'equal))
+                (should (eq (alist-get "balanced" parens-structured nil nil #'equal)
+                            :json-false))
+                (should (= (alist-get "point" parens-structured nil nil #'equal)
+                           123))))))
       (when (file-exists-p mock-emacsclient)
         (delete-file mock-emacsclient))
       (kill-buffer input-buffer)
@@ -369,13 +393,20 @@
                               (buffer-substring-no-properties
                                (line-beginning-position)
                                (line-end-position))))
+                   (tool-result (alist-get "result" response nil nil #'equal))
+                   (structured-content
+                    (alist-get "structuredContent" tool-result nil nil #'equal))
                    (text (alist-get "text"
                                     (car (alist-get "content"
-                                                    (alist-get "result" response nil nil #'equal)
+                                                    tool-result
                                                     nil nil #'equal))
                                     nil nil #'equal)))
               (should (string-match-p "\"buffer\": \"example.el\"" text))
-              (should (string-match-p "\"text\": \"alpha\\\\u000bbeta\\\\n\\\\u2514\"" text)))))
+              (should (string-match-p "\"text\": \"alpha\\\\u000bbeta\\\\n\\\\u2514\"" text))
+              (should (equal (alist-get "buffer" structured-content nil nil #'equal)
+                             "example.el"))
+              (should (equal (alist-get "text" structured-content nil nil #'equal)
+                             "alpha\13beta\n└")))))
       (when (file-exists-p mock-emacsclient)
         (delete-file mock-emacsclient))
       (kill-buffer input-buffer)

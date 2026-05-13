@@ -347,6 +347,18 @@ def text_result(text: str, *, is_error: bool = False) -> dict[str, Any]:
     return result
 
 
+def structured_result(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps(result, indent=2, sort_keys=True),
+            }
+        ],
+        "structuredContent": result,
+    }
+
+
 def schema_for_tools() -> list[dict[str, Any]]:
     return [
         {
@@ -364,6 +376,8 @@ def handle_tool_call(proxy: EmacsProxy, name: str, arguments: dict[str, Any]) ->
     if not isinstance(arguments, dict):
         return text_result("Invalid tool arguments: expected object", is_error=True)
     result = proxy.call_tool(name, arguments)
+    if isinstance(result, dict):
+        return structured_result(result)
     return text_result(json.dumps(result, indent=2, sort_keys=True))
 
 
