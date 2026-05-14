@@ -47,8 +47,8 @@
     (insert text)
     (let ((codex-ide-status-mode-transcript-preview-max-lines max-lines))
       (when-let* ((range (codex-ide-status-mode--transcript-preview-range
-                         (point-min)
-                         (point-max))))
+                          (point-min)
+                          (point-max))))
         (buffer-substring-no-properties (car range) (cdr range))))))
 
 (defun codex-ide-status-mode-test--transcript-text (&rest blocks)
@@ -763,14 +763,14 @@
 					(setq expected-offset
 					      (- (point)
 						 (codex-ide-section-heading-start
-						  (codex-ide-status-mode--section-containing-point))))
+						  (codex-ide-section-containing-point))))
 					(codex-ide-status-mode-refresh)
 					(should (equal (codex-ide-section-value
-							(codex-ide-status-mode--section-containing-point))
+							(codex-ide-section-containing-point))
 						       (car threads)))
 					(should (= (- (point)
 						      (codex-ide-section-heading-start
-						       (codex-ide-status-mode--section-containing-point)))
+						       (codex-ide-section-containing-point)))
 						   expected-offset))
 					(should (string-match-p
 						 "Last Response: first line↵second line"

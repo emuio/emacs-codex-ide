@@ -328,13 +328,13 @@ for batch callers that already presented a single confirmation.
 ;;; Generated autoloads from codex-ide-status-mode.el
 
 (defvar codex-ide-status-mode-transcript-preview-max-lines 40
-  "Maximum number of transcript lines shown in expanded buffer sections.")
+"Maximum number of transcript lines shown in expanded buffer sections.")
 (custom-autoload 'codex-ide-status-mode-transcript-preview-max-lines "codex-ide-status-mode" t)
 (defvar codex-ide-status-mode-auto-refresh-delay 0.1
-  "Idle delay in seconds before status buffers auto-refresh after session events.")
+"Idle delay in seconds before status buffers auto-refresh after session events.")
 (custom-autoload 'codex-ide-status-mode-auto-refresh-delay "codex-ide-status-mode" t)
 (defvar codex-ide-status-mode-stripe-mix 0.12
-  "How strongly status header striping blends toward the default foreground.
+"How strongly status header striping blends toward the default foreground.
 
 This controls the subtle alternating background used for every other session
 header in `codex-ide-status-mode'.  The stripe color is computed by blending
@@ -345,15 +345,15 @@ produce a more visible stripe.  A value of 0 disables the effect entirely,
 while 1 would fully replace the background with the foreground color.")
 (custom-autoload 'codex-ide-status-mode-stripe-mix "codex-ide-status-mode" t)
 (autoload 'codex-ide-status-mode-nav-forward "codex-ide-status-mode"
-  "Move point to the next focal point in a Codex status buffer." t)
+"Move point to the next focal point in a Codex status buffer." t)
 (autoload 'codex-ide-status-mode-nav-backward "codex-ide-status-mode"
-  "Move point to the previous focal point in a Codex status buffer." t)
+"Move point to the previous focal point in a Codex status buffer." t)
 (autoload 'codex-ide-status-mode-refresh "codex-ide-status-mode"
-  "Refresh the current Codex status buffer.
+"Refresh the current Codex status buffer.
 
 (fn &optional IGNORE-AUTO NOCONFIRM)" t)
 (autoload 'codex-ide-status "codex-ide-status-mode"
-  "Show the Codex status buffer for the current project." t)
+"Show the Codex status buffer for the current project." t)
 (register-definition-prefixes "codex-ide-status-mode" '("codex-ide-status-mode"))
 
 

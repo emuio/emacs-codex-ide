@@ -615,7 +615,68 @@ diff line has no corresponding source location."
             (dolist (line (plist-get hunk :lines))
               (codex-ide-diff--insert-line line)))))))))
 
-(defun codex-ide-diff--render-text (raw-text display-text directory)
+(defun codex-ide-diff--section-identity (section)
+  "Return a stable identity for diff SECTION across rerenders."
+  (pcase (codex-ide-section-type section)
+    ('summary 'summary)
+    ('file
+     (list 'file (plist-get (codex-ide-section-value section) :path)))
+    ('hunk
+     (list 'hunk
+           (cdr (plist-get (codex-ide-section-value section) :header))))
+    (_ (codex-ide-section-type section))))
+
+(defun codex-ide-diff--file-section-path-p (path)
+  "Return non-nil when PATH identifies a top-level diff file section."
+  (and (consp path)
+       (null (cdr path))
+       (consp (car path))
+       (eq (caar path) 'file)))
+
+(defun codex-ide-diff-fold-new-file-sections-when-any-file-folded-p
+    (initial-state)
+  "Return non-nil when new file sections should be folded.
+INITIAL-STATE is the section view state captured before rerendering.  This
+default policy folds newly added file sections once at least one existing file
+section was folded before the update."
+  (cl-some
+   (lambda (entry)
+     (and (codex-ide-diff--file-section-path-p (car entry))
+          (cdr entry)))
+   (alist-get 'hidden initial-state)))
+
+(defcustom codex-ide-diff-new-file-section-fold-predicate
+  #'codex-ide-diff-fold-new-file-sections-when-any-file-folded-p
+  "Predicate deciding whether newly added diff file sections start folded.
+The function is called with the section view state captured before a diff
+buffer rerender.  When it returns non-nil, file sections that were not present
+in the captured state are folded after the rerender."
+  :type 'function
+  :group 'codex-ide)
+
+(defun codex-ide-diff--initial-file-section-paths (initial-state)
+  "Return file section paths recorded in INITIAL-STATE."
+  (let (paths)
+    (dolist (entry (alist-get 'hidden initial-state))
+      (when (codex-ide-diff--file-section-path-p (car entry))
+        (push (car entry) paths)))
+    paths))
+
+(defun codex-ide-diff--apply-new-file-section-defaults (initial-state)
+  "Apply default fold state to file sections absent from INITIAL-STATE."
+  (when (and (functionp codex-ide-diff-new-file-section-fold-predicate)
+             (funcall codex-ide-diff-new-file-section-fold-predicate
+                      initial-state))
+    (let ((initial-paths
+           (codex-ide-diff--initial-file-section-paths initial-state)))
+      (dolist (section (codex-ide-diff--file-sections))
+        (let ((path (codex-ide-section-path
+                     section
+                     #'codex-ide-diff--section-identity)))
+          (unless (member path initial-paths)
+            (codex-ide-section-hide section)))))))
+
+(defun codex-ide-diff--render-text-1 (raw-text display-text directory)
   "Render RAW-TEXT and DISPLAY-TEXT in the current Codex diff buffer."
   (let ((files (codex-ide-diff--group-files-by-path
                 (codex-ide-diff--parse-files display-text))))
@@ -636,6 +697,17 @@ diff line has no corresponding source location."
       (setq-local buffer-read-only t)
       (set-buffer-modified-p nil)
       (goto-char (point-min)))))
+
+(defun codex-ide-diff--render-text (raw-text display-text directory)
+  "Render RAW-TEXT and DISPLAY-TEXT while preserving matching section state."
+  (let ((initial-state
+         (codex-ide-section-capture-view-state
+          #'codex-ide-diff--section-identity)))
+    (prog1 (codex-ide-diff--render-text-1 raw-text display-text directory)
+      (codex-ide-section-restore-view-state
+       initial-state
+       #'codex-ide-diff--section-identity)
+      (codex-ide-diff--apply-new-file-section-defaults initial-state))))
 
 (defun codex-ide-diff-goto-source (diff-text line-index &optional directory)
   "Jump from DIFF-TEXT LINE-INDEX to the corresponding source location.

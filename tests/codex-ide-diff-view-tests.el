@@ -422,6 +422,55 @@
              (rx line-start "foo.txt" (+ space) "|" (+ space) "3" (+ space) "++-")
              (buffer-string)))))
 
+(ert-deftest codex-ide-diff-render-passes-initial-state-to-new-file-fold-predicate ()
+  (with-temp-buffer
+    (let ((first-diff
+           (string-join
+            '("diff --git a/foo.txt b/foo.txt"
+              "--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -1 +1 @@"
+              "-old"
+              "+new")
+            "\n"))
+          (second-diff
+           (string-join
+            '("diff --git a/foo.txt b/foo.txt"
+              "--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -1 +1 @@"
+              "-old"
+              "+newer"
+              "diff --git a/bar.txt b/bar.txt"
+              "--- a/bar.txt"
+              "+++ b/bar.txt"
+              "@@ -3 +3 @@"
+              "-before"
+              "+after")
+            "\n"))
+          captured-state)
+      (codex-ide-diff-mode)
+      (codex-ide-diff--render-text first-diff first-diff default-directory)
+      (codex-ide-section-hide (car (codex-ide-diff--file-sections)))
+      (let ((codex-ide-diff-new-file-section-fold-predicate
+             (lambda (initial-state)
+               (setq captured-state initial-state)
+               t)))
+        (codex-ide-diff--render-text second-diff second-diff default-directory))
+      (should
+       (cl-some
+        (lambda (entry)
+          (and (equal (car entry) '((file "foo.txt")))
+               (cdr entry)))
+        (alist-get 'hidden captured-state)))
+      (let ((bar (cl-find-if
+                  (lambda (section)
+                    (equal (plist-get (codex-ide-section-value section) :path)
+                           "bar.txt"))
+                  (codex-ide-diff--file-sections))))
+        (should bar)
+        (should (codex-ide-section-hidden bar))))))
+
 (ert-deftest codex-ide-diff-render-hides-ordinary-file-headers ()
   (with-temp-buffer
     (let ((diff-text
@@ -645,6 +694,162 @@
             (with-current-buffer diff-buffer
               (should (string-match-p "two\\.txt" (buffer-string)))
               (should-not (string-match-p "one\\.txt" (buffer-string))))))
+      (when (buffer-live-p diff-buffer)
+        (kill-buffer diff-buffer))
+      (when (buffer-live-p session-buffer)
+        (kill-buffer session-buffer)))))
+
+(ert-deftest codex-ide-session-diff-note-session-updated-preserves-folded-sections ()
+  (let* ((session-buffer (generate-new-buffer "*codex[test-live-folds]*"))
+         (session (make-instance 'codex-ide-session
+                                 :buffer session-buffer
+                                 :directory default-directory))
+         (diff-buffer (get-buffer-create
+                       (codex-ide-session-diff-buffer-name-for-session
+                        session-buffer)))
+         (diff-text
+          (string-join
+           '("diff --git a/foo.txt b/foo.txt"
+             "--- a/foo.txt"
+             "+++ b/foo.txt"
+             "@@ -1 +1 @@"
+             "-old"
+             "+new"
+             "diff --git a/bar.txt b/bar.txt"
+             "--- a/bar.txt"
+             "+++ b/bar.txt"
+             "@@ -3 +3 @@"
+             "-before"
+             "+after")
+           "\n")))
+    (unwind-protect
+        (progn
+          (with-current-buffer diff-buffer
+            (codex-ide-session-diff-mode)
+            (setq-local codex-ide-session-diff--session session)
+            (setq-local codex-ide-session-diff-source 'live))
+          (cl-letf (((symbol-function 'codex-ide-diff-data-combined-turn-diff-text)
+                     (lambda (resolved-session &optional turn-id)
+                       (should (eq resolved-session session))
+                       (should-not turn-id)
+                       diff-text)))
+            (codex-ide-session-diff-note-session-updated session)
+            (with-current-buffer diff-buffer
+              (let* ((foo (cl-find-if
+                           (lambda (section)
+                             (equal (plist-get (codex-ide-section-value section) :path)
+                                    "foo.txt"))
+                           (codex-ide-diff--file-sections)))
+                     (bar (cl-find-if
+                           (lambda (section)
+                             (equal (plist-get (codex-ide-section-value section) :path)
+                                    "bar.txt"))
+                           (codex-ide-diff--file-sections)))
+                     (bar-hunk (car (codex-ide-section-children bar))))
+                (codex-ide-section-hide foo)
+                (codex-ide-section-hide bar-hunk)))
+            (setq diff-text
+                  (string-join
+                   '("diff --git a/foo.txt b/foo.txt"
+                     "--- a/foo.txt"
+                     "+++ b/foo.txt"
+                     "@@ -1 +1 @@"
+                     "-old"
+                     "+newer"
+                     "diff --git a/bar.txt b/bar.txt"
+                     "--- a/bar.txt"
+                     "+++ b/bar.txt"
+                     "@@ -3 +3 @@"
+                     "-before"
+                     "+after"
+                     "diff --git a/baz.txt b/baz.txt"
+                     "--- a/baz.txt"
+                     "+++ b/baz.txt"
+                     "@@ -5 +5 @@"
+                     "-then"
+                     "+now")
+                   "\n"))
+            (codex-ide-session-diff-note-session-updated session)
+            (with-current-buffer diff-buffer
+              (let* ((files (codex-ide-diff--file-sections))
+                     (foo (cl-find-if
+                           (lambda (section)
+                             (equal (plist-get (codex-ide-section-value section) :path)
+                                    "foo.txt"))
+                           files))
+                     (bar (cl-find-if
+                           (lambda (section)
+                             (equal (plist-get (codex-ide-section-value section) :path)
+                                    "bar.txt"))
+                           files))
+                     (baz (cl-find-if
+                           (lambda (section)
+                             (equal (plist-get (codex-ide-section-value section) :path)
+                                    "baz.txt"))
+                           files))
+                     (bar-hunk (car (codex-ide-section-children bar))))
+                (should (codex-ide-section-hidden foo))
+                (should (codex-ide-section-hidden bar-hunk))
+                (should-not (codex-ide-section-hidden bar))
+                (should (codex-ide-section-hidden baz))))))
+      (when (buffer-live-p diff-buffer)
+        (kill-buffer diff-buffer))
+      (when (buffer-live-p session-buffer)
+        (kill-buffer session-buffer)))))
+
+(ert-deftest codex-ide-session-diff-note-session-updated-leaves-new-files-open-when-all-files-open ()
+  (let* ((session-buffer (generate-new-buffer "*codex[test-live-new-open]*"))
+         (session (make-instance 'codex-ide-session
+                                 :buffer session-buffer
+                                 :directory default-directory))
+         (diff-buffer (get-buffer-create
+                       (codex-ide-session-diff-buffer-name-for-session
+                        session-buffer)))
+         (diff-text
+          (string-join
+           '("diff --git a/foo.txt b/foo.txt"
+             "--- a/foo.txt"
+             "+++ b/foo.txt"
+             "@@ -1 +1 @@"
+             "-old"
+             "+new")
+           "\n")))
+    (unwind-protect
+        (progn
+          (with-current-buffer diff-buffer
+            (codex-ide-session-diff-mode)
+            (setq-local codex-ide-session-diff--session session)
+            (setq-local codex-ide-session-diff-source 'live))
+          (cl-letf (((symbol-function 'codex-ide-diff-data-combined-turn-diff-text)
+                     (lambda (resolved-session &optional turn-id)
+                       (should (eq resolved-session session))
+                       (should-not turn-id)
+                       diff-text)))
+            (codex-ide-session-diff-note-session-updated session)
+            (setq diff-text
+                  (string-join
+                   '("diff --git a/foo.txt b/foo.txt"
+                     "--- a/foo.txt"
+                     "+++ b/foo.txt"
+                     "@@ -1 +1 @@"
+                     "-old"
+                     "+newer"
+                     "diff --git a/bar.txt b/bar.txt"
+                     "--- a/bar.txt"
+                     "+++ b/bar.txt"
+                     "@@ -3 +3 @@"
+                     "-before"
+                     "+after")
+                   "\n"))
+            (codex-ide-session-diff-note-session-updated session)
+            (with-current-buffer diff-buffer
+              (let* ((bar (cl-find-if
+                           (lambda (section)
+                             (equal (plist-get (codex-ide-section-value section) :path)
+                                    "bar.txt"))
+                           (codex-ide-diff--file-sections))))
+                (should bar)
+                (should-not (codex-ide-section-hidden bar))))))
       (when (buffer-live-p diff-buffer)
         (kill-buffer diff-buffer))
       (when (buffer-live-p session-buffer)

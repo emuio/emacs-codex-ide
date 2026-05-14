@@ -246,101 +246,6 @@ while 1 would fully replace the background with the foreground color."
            (alist-get 'preview thread))))
     (_ (codex-ide-section-type section))))
 
-(defun codex-ide-status-mode--section-path (section)
-  "Return SECTION's path from the root section list."
-  (let (path)
-    (while section
-      (push (codex-ide-status-mode--section-identity section) path)
-      (setq section (codex-ide-section-parent section)))
-    path))
-
-(defun codex-ide-status-mode--map-sections (fn)
-  "Call FN for every status section in the current buffer."
-  (cl-labels ((walk (section)
-                (funcall fn section)
-                (dolist (child (codex-ide-section-children section))
-                  (walk child))))
-    (dolist (section codex-ide-section--root-sections)
-      (walk section))))
-
-(defun codex-ide-status-mode--find-section-by-path (path)
-  "Return the section identified by PATH, or nil when absent."
-  (cl-labels ((find-in (sections remaining)
-                (when-let* ((key (car remaining)))
-                  (when-let* ((section
-                              (cl-find-if
-                               (lambda (candidate)
-                                 (equal (codex-ide-status-mode--section-identity candidate)
-                                        key))
-                               sections)))
-                    (if (cdr remaining)
-                        (find-in (codex-ide-section-children section) (cdr remaining))
-                      section)))))
-    (find-in codex-ide-section--root-sections path)))
-
-(defun codex-ide-status-mode--section-containing-point (&optional pos)
-  "Return the deepest status section containing POS or point."
-  (setq pos (or pos (point)))
-  (cl-labels ((find-in (sections)
-                (cl-find-if
-                 #'identity
-                 (mapcar
-                  (lambda (section)
-                    (when (and (<= (codex-ide-section-heading-start section) pos)
-                               (< pos (codex-ide-section-end section)))
-                      (or (find-in (codex-ide-section-children section))
-                          section)))
-                  sections))))
-    (find-in codex-ide-section--root-sections)))
-
-(defun codex-ide-status-mode--capture-view-state ()
-  "Capture the current view state of the status buffer."
-  (let* ((display-window (get-buffer-window (current-buffer) 0))
-         ;; `with-current-buffer' does not make the status buffer's window
-         ;; selected, so preserve the visible cursor location when available.
-         (capture-point (if (window-live-p display-window)
-                            (window-point display-window)
-                          (point)))
-         (section nil)
-         (collapsed nil))
-    (codex-ide-status-mode--map-sections
-     (lambda (candidate)
-       (push (cons (codex-ide-status-mode--section-path candidate)
-                   (codex-ide-section-hidden candidate))
-             collapsed)))
-    (save-excursion
-      (goto-char capture-point)
-      (setq section (codex-ide-status-mode--section-containing-point))
-      `((collapsed . ,collapsed)
-        (point-path . ,(and section
-                            (codex-ide-status-mode--section-path section)))
-        (point-offset . ,(and section
-                              (- capture-point
-                                 (codex-ide-section-heading-start section))))
-        (point . ,capture-point)))))
-
-(defun codex-ide-status-mode--restore-view-state (state)
-  "Restore the status buffer view STATE after rerendering."
-  (let ((target nil))
-    (dolist (entry (alist-get 'collapsed state))
-      (when-let* ((section (codex-ide-status-mode--find-section-by-path (car entry))))
-        (if (cdr entry)
-            (codex-ide-section-hide section)
-          (codex-ide-section-show section))))
-    (setq target
-          (if-let* ((path (alist-get 'point-path state))
-                    (section (codex-ide-status-mode--find-section-by-path path)))
-              (let ((offset (max 0 (or (alist-get 'point-offset state) 0))))
-                (min (+ (codex-ide-section-heading-start section) offset)
-                     (max (codex-ide-section-heading-start section)
-                          (1- (codex-ide-section-end section)))))
-            (min (or (alist-get 'point state) (point-min))
-                 (point-max))))
-    (goto-char target)
-    (dolist (window (get-buffer-window-list (current-buffer) nil 0))
-      (when (window-live-p window)
-        (set-window-point window target)))))
-
 (defun codex-ide-status-mode--actionable-section-at-point ()
   "Return the actionable status section at point.
 Only child `buffer' and `thread' sections support visit and delete actions."
@@ -360,7 +265,7 @@ Only child `buffer' and `thread' sections support visit and delete actions."
           (goto-char (region-beginning))
           (beginning-of-line)
           (while (<= (point) end)
-            (when-let* ((section (codex-ide-status-mode--section-containing-point)))
+            (when-let* ((section (codex-ide-section-containing-point)))
               (when (and (memq (codex-ide-section-type section) '(buffer thread))
                          (not (memq section sections)))
                 (push section sections)))
@@ -647,11 +552,11 @@ The plist contains `:text', `:start', and `:end'."
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
         (when-let* ((prompt-start (and (codex-ide-session-input-prompt-start-marker session)
+                                       (marker-position
+					(codex-ide-session-input-prompt-start-marker session))))
+                    (input-start (and (codex-ide-session-input-start-marker session)
                                       (marker-position
-                                       (codex-ide-session-input-prompt-start-marker session))))
-                   (input-start (and (codex-ide-session-input-start-marker session)
-                                     (marker-position
-                                      (codex-ide-session-input-start-marker session)))))
+                                       (codex-ide-session-input-start-marker session)))))
           (let ((text (codex-ide--current-input session)))
             (unless (string-empty-p text)
               (list :text text
@@ -936,7 +841,7 @@ at the start of the containing separator-delimited block."
         (goto-char trimmed-end)
         (let* ((block-start
                 (if-let* ((separator-start
-                          (search-backward separator start t)))
+                           (search-backward separator start t)))
                     (+ separator-start (length separator))
                   start))
                (content-start
@@ -998,7 +903,7 @@ Return nil when there is no agent reply."
                (car block-range)
                (cdr block-range)))
           (when-let* ((turn-range
-                      (codex-ide-status-mode--current-turn-transcript-range session)))
+                       (codex-ide-status-mode--current-turn-transcript-range session)))
             (codex-ide-status-mode--copy-buffer-region-for-status
              session
              (car turn-range)
@@ -1018,8 +923,8 @@ Return nil when there is no agent reply."
 (defun codex-ide-status-mode--thread-status (thread directory)
   "Return the display status for THREAD in DIRECTORY."
   (if-let* ((session (codex-ide--session-for-thread-id
-                     (alist-get 'id thread)
-                     directory)))
+                      (alist-get 'id thread)
+                      directory)))
       (codex-ide-session-status session)
     "stored"))
 
@@ -1211,10 +1116,11 @@ When IS-REFRESH is non-nil, existing buffer content will be erased/reset."
   (interactive)
   (unless codex-ide-status-mode--directory
     (user-error "No Codex project is associated with this buffer"))
-  (let ((state (codex-ide-status-mode--capture-view-state)))
-    (codex-ide-status-mode--render-buffer codex-ide-status-mode--directory
-                                          :is-refresh t)
-    (codex-ide-status-mode--restore-view-state state)))
+  (codex-ide-section-preserve-view-state
+   #'codex-ide-status-mode--section-identity
+   (lambda ()
+     (codex-ide-status-mode--render-buffer codex-ide-status-mode--directory
+                                           :is-refresh t))))
 
 ;;;###autoload
 (defun codex-ide-status ()

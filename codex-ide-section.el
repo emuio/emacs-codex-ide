@@ -158,6 +158,98 @@
         (walk section)))
     (nreverse sections)))
 
+(defun codex-ide-section-map (fn)
+  "Call FN for every section in the current buffer."
+  (cl-labels ((walk (section)
+                (funcall fn section)
+                (dolist (child (codex-ide-section-children section))
+                  (walk child))))
+    (dolist (section codex-ide-section--root-sections)
+      (walk section))))
+
+(defun codex-ide-section-path (section identity-fn)
+  "Return SECTION's stable path from the root section list.
+IDENTITY-FN is called with each section in the path and should return a value
+that can be compared with `equal' across rerenders."
+  (let (path)
+    (while section
+      (push (funcall identity-fn section) path)
+      (setq section (codex-ide-section-parent section)))
+    path))
+
+(defun codex-ide-section-find-by-path (path identity-fn)
+  "Return the section identified by PATH using IDENTITY-FN, or nil."
+  (let ((sections codex-ide-section--root-sections)
+        section)
+    (while (and path
+                (setq section
+                      (cl-find-if
+                       (lambda (candidate)
+                         (equal (funcall identity-fn candidate)
+                                (car path)))
+                       sections)))
+      (setq sections (codex-ide-section-children section)
+            path (cdr path)))
+    (and (null path) section)))
+
+(defun codex-ide-section-capture-view-state (identity-fn)
+  "Capture fold and point state for sections in the current buffer.
+IDENTITY-FN is used to produce stable section path elements across rerenders."
+  (let* ((display-window (get-buffer-window (current-buffer) 0))
+         ;; `with-current-buffer' does not make this buffer's window selected,
+         ;; so preserve the visible cursor location when available.
+         (capture-point (if (window-live-p display-window)
+                            (window-point display-window)
+                          (point)))
+         (section nil)
+         (hidden nil))
+    (codex-ide-section-map
+     (lambda (candidate)
+       (push (cons (codex-ide-section-path candidate identity-fn)
+                   (codex-ide-section-hidden candidate))
+             hidden)))
+    (save-excursion
+      (goto-char capture-point)
+      (setq section (codex-ide-section-containing-point))
+      `((hidden . ,hidden)
+        (point-path . ,(and section
+                            (codex-ide-section-path section identity-fn)))
+        (point-offset . ,(and section
+                              (- capture-point
+                                 (codex-ide-section-heading-start section))))
+        (point . ,capture-point)))))
+
+(defun codex-ide-section-restore-view-state (state identity-fn)
+  "Restore section view STATE after rerendering.
+IDENTITY-FN must produce the same identities used when STATE was captured."
+  (let ((target nil))
+    (dolist (entry (alist-get 'hidden state))
+      (when-let* ((section (codex-ide-section-find-by-path (car entry)
+                                                           identity-fn)))
+        (if (cdr entry)
+            (codex-ide-section-hide section)
+          (codex-ide-section-show section))))
+    (setq target
+          (if-let* ((path (alist-get 'point-path state))
+                    (section (codex-ide-section-find-by-path path identity-fn)))
+              (let ((offset (max 0 (or (alist-get 'point-offset state) 0))))
+                (min (+ (codex-ide-section-heading-start section) offset)
+                     (max (codex-ide-section-heading-start section)
+                          (1- (codex-ide-section-end section)))))
+            (min (or (alist-get 'point state) (point-min))
+                 (point-max))))
+    (goto-char target)
+    (dolist (window (get-buffer-window-list (current-buffer) nil 0))
+      (when (window-live-p window)
+        (set-window-point window target)))))
+
+(defun codex-ide-section-preserve-view-state (identity-fn render-fn)
+  "Run RENDER-FN while preserving matching section view state.
+IDENTITY-FN is used to match old and new sections across the rerender."
+  (let ((state (codex-ide-section-capture-view-state identity-fn)))
+    (prog1 (funcall render-fn)
+      (codex-ide-section-restore-view-state state identity-fn))))
+
 (defun codex-ide-section--move-to (section)
   "Move point to SECTION's heading start and return SECTION."
   (goto-char (codex-ide-section-heading-start section))
