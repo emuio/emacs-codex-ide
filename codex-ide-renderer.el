@@ -544,6 +544,9 @@ window size change."
   "Return the current face spec for `codex-ide-result-rail-face'."
   '((t :inherit (shadow fringe))))
 
+(defvar codex-ide-renderer--theme-refresh-timer nil
+  "Timer used to coalesce deferred theme-sensitive face refreshes.")
+
 (defun codex-ide-renderer-refresh-theme-faces ()
   "Reapply theme-sensitive renderer face specs.
 
@@ -557,6 +560,21 @@ theme switches or file reloads in a live Emacs session."
                  (codex-ide-renderer--command-output-face-spec))
   (face-spec-set 'codex-ide-result-rail-face
                  (codex-ide-renderer--result-rail-face-spec)))
+
+(defun codex-ide-renderer--run-scheduled-theme-refresh ()
+  "Run a deferred theme-sensitive face refresh."
+  (setq codex-ide-renderer--theme-refresh-timer nil)
+  (codex-ide-renderer-refresh-theme-faces))
+
+(defun codex-ide-renderer-schedule-theme-refresh ()
+  "Schedule a coalesced refresh of theme-sensitive renderer faces.
+
+Theme packages and user configuration can continue mutating face attributes
+inside the current theme hook chain.  Deferring the refresh lets those changes
+settle before Codex samples `default' and stores derived concrete colors."
+  (unless codex-ide-renderer--theme-refresh-timer
+    (setq codex-ide-renderer--theme-refresh-timer
+          (run-at-time 0 nil #'codex-ide-renderer--run-scheduled-theme-refresh))))
 
 (codex-ide-renderer-refresh-theme-faces)
 

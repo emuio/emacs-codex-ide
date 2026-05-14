@@ -80,6 +80,9 @@ while 1 would fully replace the background with the foreground color."
 (defvar codex-ide-status-mode--theme-refresh-buffers nil
   "Live buffers currently using `codex-ide-status-mode' theme refresh hooks.")
 
+(defvar codex-ide-status-mode--theme-refresh-timer nil
+  "Timer used to coalesce deferred status face refreshes.")
+
 (defvar codex-ide-status-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map codex-ide-section-mode-map)
@@ -204,15 +207,18 @@ while 1 would fully replace the background with the foreground color."
   (remove-hook 'change-major-mode-hook #'codex-ide-status-mode--teardown-auto-refresh t))
 
 (defun codex-ide-status-mode--handle-theme-change (&rest _args)
-  "Refresh stripe face attributes after a theme change."
+  "Schedule status face refreshes after a theme change."
   (setq codex-ide-status-mode--theme-refresh-buffers
         (seq-filter #'buffer-live-p codex-ide-status-mode--theme-refresh-buffers))
   (when codex-ide-status-mode--theme-refresh-buffers
-    (codex-ide-status-mode--refresh-striped-heading-face)))
+    (codex-ide-renderer-schedule-theme-refresh)
+    (codex-ide-status-mode--schedule-theme-refresh)))
 
 (defun codex-ide-status-mode--setup-theme-refresh ()
   "Subscribe the current status buffer to theme change events."
   (cl-pushnew (current-buffer) codex-ide-status-mode--theme-refresh-buffers)
+  (codex-ide-renderer-schedule-theme-refresh)
+  (codex-ide-status-mode--schedule-theme-refresh)
   (add-hook 'enable-theme-functions #'codex-ide-status-mode--handle-theme-change)
   (add-hook 'disable-theme-functions #'codex-ide-status-mode--handle-theme-change)
   (add-hook 'kill-buffer-hook #'codex-ide-status-mode--teardown-theme-refresh nil t)
@@ -224,6 +230,9 @@ while 1 would fully replace the background with the foreground color."
         (delq (current-buffer)
               (seq-filter #'buffer-live-p codex-ide-status-mode--theme-refresh-buffers)))
   (unless codex-ide-status-mode--theme-refresh-buffers
+    (when codex-ide-status-mode--theme-refresh-timer
+      (cancel-timer codex-ide-status-mode--theme-refresh-timer)
+      (setq codex-ide-status-mode--theme-refresh-timer nil))
     (remove-hook 'enable-theme-functions #'codex-ide-status-mode--handle-theme-change)
     (remove-hook 'disable-theme-functions #'codex-ide-status-mode--handle-theme-change))
   (remove-hook 'kill-buffer-hook #'codex-ide-status-mode--teardown-theme-refresh t)
@@ -475,6 +484,18 @@ Only child `buffer' and `thread' sections support visit and delete actions."
      :inherit 'default
      :background (or background 'unspecified)
      :extend t)))
+
+(defun codex-ide-status-mode--run-scheduled-theme-refresh ()
+  "Run a deferred status face refresh."
+  (setq codex-ide-status-mode--theme-refresh-timer nil)
+  (when (seq-some #'buffer-live-p codex-ide-status-mode--theme-refresh-buffers)
+    (codex-ide-status-mode--refresh-striped-heading-face)))
+
+(defun codex-ide-status-mode--schedule-theme-refresh ()
+  "Schedule a coalesced refresh of theme-sensitive status faces."
+  (unless codex-ide-status-mode--theme-refresh-timer
+    (setq codex-ide-status-mode--theme-refresh-timer
+          (run-at-time 0 nil #'codex-ide-status-mode--run-scheduled-theme-refresh))))
 
 (defun codex-ide-status-mode--apply-heading-stripe (section)
   "Apply stripe styling to SECTION's heading."

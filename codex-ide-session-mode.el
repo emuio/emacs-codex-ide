@@ -317,11 +317,12 @@ so users can navigate within those controls without opting out of follow mode."
         (cl-remove-if-not #'buffer-live-p
                           codex-ide-session-mode--theme-refresh-buffers))
   (when codex-ide-session-mode--theme-refresh-buffers
-    (codex-ide-renderer-refresh-theme-faces)))
+    (codex-ide-renderer-schedule-theme-refresh)))
 
 (defun codex-ide-session-mode--setup-theme-refresh ()
   "Subscribe the current session buffer to theme change events."
   (cl-pushnew (current-buffer) codex-ide-session-mode--theme-refresh-buffers)
+  (codex-ide-renderer-schedule-theme-refresh)
   (add-hook 'enable-theme-functions #'codex-ide-session-mode--handle-theme-change)
   (add-hook 'disable-theme-functions #'codex-ide-session-mode--handle-theme-change)
   (add-hook 'kill-buffer-hook #'codex-ide-session-mode--teardown-theme-refresh nil t)
