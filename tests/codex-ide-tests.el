@@ -7216,6 +7216,24 @@
 	(should (equal (get-text-property pos 'codex-ide-line) 3))
 	(should (equal (get-text-property pos 'codex-ide-column) 2)))))
 
+  (ert-deftest codex-ide-render-markdown-region-renders-table-br-as-line-breaks ()
+    (with-temp-buffer
+      (insert "| Item | Notes |\n| --- | --- |\n| alpha<br/>beta<br />gamma | ok |\n")
+      (codex-ide-renderer-render-markdown-region (point-min) (point-max) t)
+      (let ((rendered (buffer-string)))
+	(should (string-match-p "^│ alpha │ ok    │$" rendered))
+	(should (string-match-p "^│ beta  │       │$" rendered))
+	(should (string-match-p "^│ gamma │       │$" rendered))
+	(should-not (string-match-p "<br" rendered)))))
+
+  (ert-deftest codex-ide-render-markdown-region-keeps-literal-table-br-text ()
+    (with-temp-buffer
+      (insert "| Kind | Value |\n| --- | --- |\n| code | `<br>` |\n| escaped | &lt;br&gt; |\n")
+      (codex-ide-renderer-render-markdown-region (point-min) (point-max) t)
+      (let ((rendered (buffer-string)))
+	(should (string-match-p "^| code    | <br>      |$" rendered))
+	(should (string-match-p "^| escaped | &lt;br&gt; |$" rendered)))))
+
   (ert-deftest codex-ide-render-markdown-region-defers-trailing-pipe-tables ()
     (with-temp-buffer
       (insert "| Name | Age |\n| --- | ---: |\n| Bob | 3 |\n")

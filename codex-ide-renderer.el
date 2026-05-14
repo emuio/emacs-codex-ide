@@ -2012,6 +2012,7 @@ intentionally ignored."
   (concat
    "\\(\\[\\([^]\n]+\\)\\](\\([^)\n]+\\))\\)"
    "\\|`\\([^`\n]+\\)`"
+   "\\|<[bB][rR][ \t]*/?>"
    "\\|\\(\\*\\*\\([^*\n ]\\(?:[^*\n]*[^*\n ]\\)?\\)\\*\\*\\)"
    "\\|\\(__\\([^_\n ]\\(?:[^\n]*?[^_\n ]\\)?\\)__\\)"
    "\\|\\(\\*\\([^*\n ]\\(?:[^*\n]*[^*\n ]\\)?\\)\\*\\)"
@@ -2089,6 +2090,8 @@ intentionally ignored."
           (push (propertize (match-string 4 cell)
                             'face 'font-lock-keyword-face)
                 parts))
+         ((string-match-p "\\`<[bB][rR][ \t]*/?>\\'" (match-string 0 cell))
+          (push "\n" parts))
          ((match-beginning 6)
           (push (propertize (match-string 6 cell) 'face 'bold) parts))
          ((match-beginning 8)
@@ -2301,21 +2304,30 @@ Use LEFT, INTERSECTION, and RIGHT as the border junction characters."
 
 (defun codex-ide-renderer--markdown-table-wrap-cell (cell width)
   "Return CELL split into propertized lines no wider than WIDTH."
-  (let ((pos (codex-ide-renderer--markdown-table-skip-whitespace cell 0))
-        (lines nil))
-    (while (< pos (length cell))
-      (let* ((remaining (substring cell pos))
-             (break (codex-ide-renderer--markdown-table-line-break
-                     remaining
-                     width))
-             (line (codex-ide-renderer--markdown-table-trim-right
-                    (substring remaining 0 break))))
-        (push line lines)
-        (setq pos (codex-ide-renderer--markdown-table-skip-whitespace
-                   cell
-                   (+ pos break)))))
-    (or (nreverse lines)
-        (list ""))))
+  (apply
+   #'append
+   (mapcar
+    (lambda (segment)
+      (let ((pos (codex-ide-renderer--markdown-table-skip-whitespace segment 0))
+            (lines nil))
+        (while (< pos (length segment))
+          (let* ((remaining (substring segment pos))
+                 (break (codex-ide-renderer--markdown-table-line-break
+                         remaining
+                         width))
+                 (line (codex-ide-renderer--markdown-table-trim-right
+                        (substring remaining 0 break))))
+            (push line lines)
+            (setq pos (codex-ide-renderer--markdown-table-skip-whitespace
+                       segment
+                       (+ pos break)))))
+        (or (nreverse lines)
+            (list ""))))
+    (split-string cell "\n"))))
+
+(defun codex-ide-renderer--markdown-table-cell-width (cell)
+  "Return the maximum display width of any hard-broken line in CELL."
+  (apply #'max 1 (mapcar #'string-width (split-string cell "\n"))))
 
 (defun codex-ide-renderer--markdown-table-format-box-line
     (cells widths alignments)
@@ -2407,14 +2419,22 @@ Use LEFT, INTERSECTION, and RIGHT as the border junction characters."
                 (cl-loop for column from 0 below column-count
                          collect (apply #'max 1
                                         (mapcar (lambda (row)
-                                                  (string-width (nth column row)))
+                                                  (codex-ide-renderer--markdown-table-cell-width
+                                                   (nth column row)))
                                                 rendered-rows))))
                (constrained-widths
                 (codex-ide-renderer--markdown-table-constrain-widths
                  widths
                  (codex-ide-renderer--markdown-table-effective-max-width
                   indent)))
-               (box-table-p (not (equal constrained-widths widths)))
+               (box-table-p
+                (or (seq-some
+                     (lambda (row)
+                       (seq-some (lambda (cell)
+                                   (string-match-p "\n" cell))
+                                 row))
+                     rendered-rows)
+                    (not (equal constrained-widths widths))))
 	       (table-text
                 (if box-table-p
                     (concat
