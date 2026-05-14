@@ -511,6 +511,11 @@ otherwise use the most recent completed turn.
 
 (register-definition-prefixes "codex-ide-thread-history" '("codex-ide--"))
 
+
+
+;;; Generated autoloads from codex-ide-diff-model.el
+
+(register-definition-prefixes "codex-ide-diff-model" '("codex-ide-diff-model-"))
 
 ;;; End of scraped data
 

@@ -608,13 +608,13 @@
             "+new"
             " after")
           "\n")))
-    (should (equal (codex-ide-diff--source-location-for-line diff-text 4)
+    (should (equal (codex-ide-diff-model-source-location-for-line diff-text 4)
                    '(:path "bar.txt" :line 10)))
-    (should (equal (codex-ide-diff--source-location-for-line diff-text 5)
+    (should (equal (codex-ide-diff-model-source-location-for-line diff-text 5)
                    '(:path "bar.txt" :line 11)))
-    (should (equal (codex-ide-diff--source-location-for-line diff-text 6)
+    (should (equal (codex-ide-diff-model-source-location-for-line diff-text 6)
                    '(:path "bar.txt" :line 11)))
-    (should (equal (codex-ide-diff--source-location-for-line diff-text 7)
+    (should (equal (codex-ide-diff-model-source-location-for-line diff-text 7)
                    '(:path "bar.txt" :line 12)))))
 
 (ert-deftest codex-ide-diff-source-location-resolves-normalized-headerless-patch ()
@@ -626,9 +626,9 @@
                                           "+new")
                                         "\n")))))))
          (diff-text (codex-ide--file-change-diff-text item)))
-    (should (equal (codex-ide-diff--source-location-for-line diff-text 4)
+    (should (equal (codex-ide-diff-model-source-location-for-line diff-text 4)
                    '(:path "foo.txt" :line 3)))
-    (should (equal (codex-ide-diff--source-location-for-line diff-text 5)
+    (should (equal (codex-ide-diff-model-source-location-for-line diff-text 5)
                    '(:path "foo.txt" :line 4)))))
 
 (ert-deftest codex-ide-diff-source-location-resolves-body-only-new-file ()
@@ -640,9 +640,9 @@
             "first"
             "second")
           "\n")))
-    (should (equal (codex-ide-diff--source-location-for-line diff-text 3)
+    (should (equal (codex-ide-diff-model-source-location-for-line diff-text 3)
                    '(:path "foo.txt" :line 1)))
-    (should (equal (codex-ide-diff--source-location-for-line diff-text 4)
+    (should (equal (codex-ide-diff-model-source-location-for-line diff-text 4)
                    '(:path "foo.txt" :line 2)))))
 
 (ert-deftest codex-ide-diff-goto-source-resolves-project-relative-header ()
