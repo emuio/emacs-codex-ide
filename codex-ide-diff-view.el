@@ -49,10 +49,12 @@
 (define-derived-mode codex-ide-diff-mode codex-ide-section-mode "Codex-Diff"
   "Major mode for standalone Codex diff buffers.
 
-\\<codex-ide-diff-mode-map>
-* \\[codex-ide-diff-toggle-file-at-point] toggles the file diff at point.
+* \\<codex-ide-diff-mode-map>\\[codex-ide-diff-toggle-file-at-point] toggles the file diff at point.
+
 * \\[codex-ide-diff-collapse-all-files] collapses all file diffs.
+
 * \\[codex-ide-diff-expand-all-files] expands all file diffs.
+
 * \\[codex-ide-diff-goto-source-at-point] jumps to source for the diff line at point.")
 
 (defvar-local codex-ide-diff--raw-text nil
@@ -75,7 +77,7 @@ The value is one of `live', `transcript', or `pinned'.")
   "Turn id selected by the current session diff buffer, when any.")
 
 (defface codex-ide-session-diff-header-face
-  '((t :inherit codex-ide-header-line-face :weight bold))
+  '((t :inherit codex-ide-header-line-face))
   "Face used for the Codex session diff header-line label."
   :group 'codex-ide)
 
@@ -89,25 +91,27 @@ The value is one of `live', `transcript', or `pinned'.")
     map)
   "Keymap used in canonical Codex session diff buffers.")
 
-(defun codex-ide-session-diff--source-label (&optional source)
-  "Return the header-line label for session diff SOURCE."
-  (pcase (or source codex-ide-session-diff-source)
-    ('live "live")
-    ('transcript "current turn")
-    ('pinned "pinned turn")
-    (_ "changes")))
+(defun codex-ide-session-diff--controls-text ()
+  "Return compact session diff control hints."
+  "[l live] [t transcript] [p pin] [g refresh]")
 
 (defun codex-ide-session-diff--header-line ()
   "Return the header-line text for the current session diff buffer."
   (propertize
-   (concat " Codex session diff | "
-           (codex-ide-session-diff--source-label)
-           " | grouped by file ")
+   (concat " " (codex-ide-session-diff--controls-text) " ")
    'face 'codex-ide-session-diff-header-face))
 
 (define-derived-mode codex-ide-session-diff-mode codex-ide-diff-mode
   "Codex-Session-Diff"
-  "Major mode for a canonical Codex session diff buffer."
+  "Major mode for a canonical Codex session diff buffer.
+
+* \\<codex-ide-session-diff-mode-map>\\[codex-ide-session-diff-follow-live] shows the latest or currently running turn.
+
+* \\[codex-ide-session-diff-follow-transcript] follows the turn at point in the session transcript.
+
+* \\[codex-ide-session-diff-pin-current-turn] pins the diff buffer to the turn at point in the session transcript.
+
+* \\[codex-ide-session-diff-refresh] refreshes the current diff source."
   (setq-local header-line-format
               '(:eval (codex-ide-session-diff--header-line)))
   (setq-local mode-line-process
@@ -799,7 +803,10 @@ Return the created buffer."
    (delq nil
          (list (format "# Codex session diff: %s" source)
                (and turn-id (format "# Turn: %s" turn-id))
-               (format "# %s" message)))
+               (format "# %s" message)
+               (concat "# "
+                       (codex-ide-session-diff--controls-text)
+                       " switches diff source.")))
    "\n"))
 
 (defun codex-ide-session-diff--target-turn-id (source)

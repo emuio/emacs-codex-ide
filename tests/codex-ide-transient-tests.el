@@ -60,6 +60,10 @@
   (should (transient-get-suffix 'codex-ide-menu "b"))
   (should (transient-get-suffix 'codex-ide-menu "p"))
   (should (transient-get-suffix 'codex-ide-menu "l"))
+  (should (equal (codex-ide-test--transient-suffix-prop
+                  (transient-get-suffix 'codex-ide-menu "D")
+                  :description)
+                 "Session diff (live/transcript/pinned)"))
   (should-error (transient-get-suffix 'codex-ide-menu "t")))
 
 (ert-deftest codex-ide-config-menu-exposes-reasoning-effort-suffix ()

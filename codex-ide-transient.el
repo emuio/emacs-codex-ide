@@ -264,7 +264,7 @@
 			  ["Manage"
 			   ("m" "Manage sessions" codex-ide-status)
 			   ("l" "Live session buffers" codex-ide-session-buffer-list)
-			   ("D" "Session diff" codex-ide-session-diff-open)]
+			   ("D" "Session diff (live/transcript/pinned)" codex-ide-session-diff-open)]
 			  ["Submenus"
 			   ("C" "Configuration" codex-ide-config-menu)
 			   ("d" "Debug" codex-ide-debug-menu)]])

@@ -12,6 +12,22 @@
 (require 'subr-x)
 (require 'codex-ide)
 
+(ert-deftest codex-ide-diff-mode-docstring-lists-key-bindings ()
+  (let ((doc (documentation #'codex-ide-diff-mode t)))
+    (dolist (binding '("* \\<codex-ide-diff-mode-map>\\[codex-ide-diff-toggle-file-at-point]"
+                       "* \\[codex-ide-diff-collapse-all-files]"
+                       "* \\[codex-ide-diff-expand-all-files]"
+                       "* \\[codex-ide-diff-goto-source-at-point]"))
+      (should (string-match-p (regexp-quote binding) doc)))))
+
+(ert-deftest codex-ide-session-diff-mode-docstring-lists-key-bindings ()
+  (let ((doc (documentation #'codex-ide-session-diff-mode t)))
+    (dolist (binding '("* \\<codex-ide-session-diff-mode-map>\\[codex-ide-session-diff-follow-live]"
+                       "* \\[codex-ide-session-diff-follow-transcript]"
+                       "* \\[codex-ide-session-diff-pin-current-turn]"
+                       "* \\[codex-ide-session-diff-refresh]"))
+      (should (string-match-p (regexp-quote binding) doc)))))
+
 (ert-deftest codex-ide-diff-open-buffer-displays-codex-diff-mode-buffer ()
   (let ((display-call nil)
         diff-buffer)
@@ -601,12 +617,12 @@
                   "*codex[my-project]*")
                  "*codex[my-project]*-session-diff")))
 
-(ert-deftest codex-ide-session-diff-mode-header-line-describes-source ()
+(ert-deftest codex-ide-session-diff-mode-header-line-shows-key-hints ()
   (with-temp-buffer
     (codex-ide-session-diff-mode)
     (should (equal (substring-no-properties
                     (codex-ide-session-diff--header-line))
-                   " Codex session diff | live | grouped by file "))
+                   " [l live] [t transcript] [p pin] [g refresh] "))
     (should (equal header-line-format
                    '(:eval (codex-ide-session-diff--header-line))))
     (should (eq (get-text-property
@@ -616,15 +632,25 @@
                 'codex-ide-session-diff-header-face))
     (should (equal (get 'codex-ide-session-diff-header-face
                         'face-defface-spec)
-                   '((t :inherit codex-ide-header-line-face :weight bold))))
+                   '((t :inherit codex-ide-header-line-face))))
     (setq-local codex-ide-session-diff-source 'transcript)
     (should (equal (substring-no-properties
                     (codex-ide-session-diff--header-line))
-                   " Codex session diff | current turn | grouped by file "))
+                   " [l live] [t transcript] [p pin] [g refresh] "))
     (setq-local codex-ide-session-diff-source 'pinned)
     (should (equal (substring-no-properties
                     (codex-ide-session-diff--header-line))
-                   " Codex session diff | pinned turn | grouped by file "))))
+                   " [l live] [t transcript] [p pin] [g refresh] "))))
+
+(ert-deftest codex-ide-session-diff-empty-message-includes-source-controls ()
+  (should (equal (codex-ide-session-diff--empty-message
+                  'transcript "turn-1" "No prompt at transcript position")
+                 (string-join
+                  '("# Codex session diff: transcript"
+                    "# Turn: turn-1"
+                    "# No prompt at transcript position"
+                    "# [l live] [t transcript] [p pin] [g refresh] switches diff source.")
+                  "\n"))))
 
 (ert-deftest codex-ide-session-diff-open-uses-canonical-mode-and-live-source ()
   (let* ((session-buffer (generate-new-buffer "*codex[test-session-diff]*"))
@@ -658,7 +684,7 @@
             (should (eq codex-ide-session-diff-source 'live))
             (should (equal (substring-no-properties
                             (codex-ide-session-diff--header-line))
-                           " Codex session diff | live | grouped by file "))
+                           " [l live] [t transcript] [p pin] [g refresh] "))
             (should (string-match-p "foo\\.txt" (buffer-string)))))
       (when (buffer-live-p diff-buffer)
         (kill-buffer diff-buffer))
