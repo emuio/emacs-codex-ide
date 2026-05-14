@@ -135,6 +135,45 @@
       (should (equal (codex-ide--file-change-diff-text item)
                      diff-text)))))
 
+(ert-deftest codex-ide-diff-data-display-text-shortens-project-local-absolute-headers ()
+  (let* ((root (file-name-as-directory
+                (expand-file-name "codex-ide-test-project"
+                                  temporary-file-directory)))
+         (file (expand-file-name "lib/foo.txt" root))
+         (diff-text (string-join
+                     (list (format "diff --git a/%s b/%s" file file)
+                           (format "--- a/%s" file)
+                           (format "+++ b/%s\t2026-05-13" file)
+                           "@@ -1 +1 @@"
+                           "-old"
+                           "+new")
+                     "\n")))
+    (should (equal (codex-ide-diff-data-display-text diff-text root)
+                   (string-join
+                    '("diff --git a/lib/foo.txt b/lib/foo.txt"
+                      "--- a/lib/foo.txt"
+                      "+++ b/lib/foo.txt\t2026-05-13"
+                      "@@ -1 +1 @@"
+                      "-old"
+                      "+new")
+                    "\n")))))
+
+(ert-deftest codex-ide-diff-data-display-text-keeps-non-project-absolute-headers ()
+  (let* ((root (file-name-as-directory
+                (expand-file-name "codex-ide-test-project"
+                                  temporary-file-directory)))
+         (file "/opt/other-project/lib/foo.txt")
+         (diff-text (string-join
+                     (list (format "diff --git a/%s b/%s" file file)
+                           (format "--- a/%s" file)
+                           (format "+++ b/%s" file)
+                           "@@ -1 +1 @@"
+                           "-old"
+                           "+new")
+                     "\n")))
+    (should (equal (codex-ide-diff-data-display-text diff-text root)
+                   diff-text))))
+
 (ert-deftest codex-ide-file-change-diff-text-wraps-headerless-patch-as-git-diff ()
   (let* ((patch-text (string-join
                       '("@@ -3,2 +3,3 @@"

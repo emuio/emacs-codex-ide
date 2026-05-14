@@ -2824,76 +2824,6 @@ Return the rendered detail line strings."
           :removed removed
           :line-count (codex-ide--diff-line-count diff-text))))
 
-(defun codex-ide--file-change-diff-display-path (path directory)
-  "Return PATH shortened relative to DIRECTORY when possible."
-  (cond
-   ((not (stringp path)) path)
-   ((equal path "/dev/null") path)
-   (t
-    (let* ((side-prefix
-            (and (or (string-prefix-p "a/" path)
-                     (string-prefix-p "b/" path))
-                 (substring path 0 2)))
-           (raw-path (if side-prefix (substring path 2) path))
-           (root (and directory
-                      (file-name-as-directory
-                       (expand-file-name directory))))
-           (expanded-path (and (file-name-absolute-p raw-path)
-                               (expand-file-name raw-path))))
-      (if (and root
-               expanded-path
-               (string-prefix-p root expanded-path))
-          (concat side-prefix
-                  (file-relative-name expanded-path root))
-        path)))))
-
-(defun codex-ide--file-change-diff-display-header-line (line directory)
-  "Return diff header LINE with project-local paths shortened for display."
-  (cond
-   ((string-match
-     (rx line-start "diff --git "
-         (group (+ (not (any " \n"))))
-         (+ space)
-         (group (+ (not (any " \n"))))
-         line-end)
-     line)
-    (format "diff --git %s %s"
-            (codex-ide--file-change-diff-display-path
-             (match-string 1 line)
-             directory)
-            (codex-ide--file-change-diff-display-path
-             (match-string 2 line)
-             directory)))
-   ((string-match
-     (rx line-start
-         (group (or "---" "+++"))
-         (+ space)
-         (group (+ (not (any "\t\n"))))
-         (group (? "\t" (* nonl)))
-         line-end)
-     line)
-    (format "%s %s%s"
-            (match-string 1 line)
-            (codex-ide--file-change-diff-display-path
-             (match-string 2 line)
-             directory)
-            (match-string 3 line)))
-   (t line)))
-
-(defun codex-ide--file-change-diff-display-text (diff-text directory)
-  "Return DIFF-TEXT formatted for session transcript display."
-  ;; This is presentation-only; overlays keep raw diff text for source jumps
-  ;; and dedicated diff buffers.
-  (if (stringp diff-text)
-      (string-join
-       (mapcar (lambda (line)
-                 (codex-ide--file-change-diff-display-header-line
-                  line
-                  directory))
-               (split-string diff-text "\n"))
-       "\n")
-    diff-text))
-
 (defun codex-ide--file-change-diff-header-prefix-text (overlay)
   "Return summary header text for file-change diff OVERLAY."
   (let* ((stats (or (overlay-get overlay :diff-stats) '()))
@@ -2974,7 +2904,7 @@ CONTEXT is either nil for ordinary transcript rendering or `approval'."
         (let* ((buffer (codex-ide-session-buffer session))
                (directory (codex-ide-session-directory session))
                (display-text
-                (codex-ide--file-change-diff-display-text trimmed directory))
+                (codex-ide-diff-data-display-text trimmed directory))
                (state (copy-tree (or (codex-ide--item-state session item-id) '())))
                (anchor (plist-get state :item-result-anchor-marker))
                (stats (codex-ide--file-change-diff-stats display-text)))

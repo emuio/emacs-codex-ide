@@ -1755,7 +1755,7 @@
       (should (equal captured
                      (list raw-diff-text 5 default-directory))))))
 
-(ert-deftest codex-ide-file-change-diff-render-shortens-only-transcript-display ()
+(ert-deftest codex-ide-file-change-diff-render-shortens-transcript-display ()
   (let* ((root (file-name-as-directory
                 (make-temp-file "codex-ide-diff-transcript-" t)))
          (file (expand-file-name "lib/foo.txt" root))
@@ -5028,7 +5028,11 @@
 					      (should-not (string-match-p "\\[accept for session\\]" text))
 					      (should-not (string-match-p "\\[decline\\]" text))
 					      (should-not (string-match-p "\\[cancel turn\\]" text))
-					      (should (string-match-p "diff --git a/foo\\.txt b/foo\\.txt" text)))))
+					      (should (string-match-p
+						       (regexp-quote "foo.txt +1 -1")
+						       text))
+					      (should (string-match-p "@@ -1 \\+1 @@" text))
+					      (should (string-match-p "\\+new" text)))))
 				      (when (buffer-live-p diff-buffer)
 					(kill-buffer diff-buffer))))))))
 

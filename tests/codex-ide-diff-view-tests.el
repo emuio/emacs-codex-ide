@@ -34,11 +34,20 @@
           (should (equal (car display-call) diff-buffer))
           (with-current-buffer diff-buffer
             (should (eq major-mode 'codex-ide-diff-mode))
-            (should (derived-mode-p 'diff-mode))
+            (should (derived-mode-p 'codex-ide-section-mode))
             (should buffer-read-only)
+            (should-not (string-match-p
+                         (regexp-quote "diff --git a/foo.txt b/foo.txt")
+                         (buffer-string)))
+            (should (string-match-p
+                     (regexp-quote "@@ -1 +1 @@")
+                     (buffer-string)))
+            (should (string-match-p
+                     (regexp-quote "+new")
+                     (buffer-string)))
             (should (string-match-p
                      (regexp-quote "diff --git a/foo.txt b/foo.txt")
-                     (buffer-string)))
+                     codex-ide-diff--display-text))
             (should (string-suffix-p "\n" (buffer-string)))
             (should (string-match-p "foo\\.txt" (buffer-name)))))
       (when (buffer-live-p diff-buffer)
@@ -69,6 +78,53 @@
       (when (buffer-live-p diff-buffer)
         (kill-buffer diff-buffer)))))
 
+(ert-deftest codex-ide-diff-open-buffer-shortens-project-local-absolute-headers ()
+  (let* ((root (file-name-as-directory
+                (make-temp-file "codex-ide-diff-view-" t)))
+         (file (expand-file-name "lib/foo.txt" root))
+         (diff-text (string-join
+                     (list (format "diff --git a/%s b/%s" file file)
+                           (format "--- a/%s" file)
+                           (format "+++ b/%s" file)
+                           "@@ -1 +1 @@"
+                           "-old"
+                           "+new")
+                     "\n"))
+         (display-call nil)
+         diff-buffer
+         visited-buffer)
+    (unwind-protect
+        (progn
+          (make-directory (file-name-directory file) t)
+          (with-temp-file file
+            (insert "new\n"))
+          (cl-letf (((symbol-function 'codex-ide-display-buffer)
+                     (lambda (buffer &optional action)
+                       (setq display-call (list buffer action))
+                       nil)))
+            (setq diff-buffer
+                  (codex-ide-diff-open-buffer diff-text nil root)))
+          (should (equal (car display-call) diff-buffer))
+          (with-current-buffer diff-buffer
+            (should-not (string-match-p
+                         (regexp-quote "diff --git a/lib/foo.txt b/lib/foo.txt")
+                         (buffer-string)))
+            (should-not (string-match-p
+                         (regexp-quote file)
+                         (buffer-string)))
+            (goto-char (point-min))
+            (search-forward "+new")
+            (codex-ide-diff-goto-source-at-point)
+            (setq visited-buffer (current-buffer))
+            (should (equal (buffer-file-name visited-buffer) file))
+            (should (= (line-number-at-pos) 1))))
+      (when (buffer-live-p visited-buffer)
+        (kill-buffer visited-buffer))
+      (when (buffer-live-p diff-buffer)
+        (kill-buffer diff-buffer))
+      (when (file-directory-p root)
+        (delete-directory root t)))))
+
 (ert-deftest codex-ide-diff-mode-binds-file-folding-commands ()
   (with-temp-buffer
     (codex-ide-diff-mode)
@@ -81,91 +137,323 @@
 
 (ert-deftest codex-ide-diff-collapse-and-expand-all-files ()
   (with-temp-buffer
-    (insert (string-join
-             '("diff --git a/foo.txt b/foo.txt"
-               "--- a/foo.txt"
-               "+++ b/foo.txt"
-               "@@ -1 +1 @@"
-               "-old"
-               "+new"
-               "diff --git a/bar.txt b/bar.txt"
-               "--- a/bar.txt"
-               "+++ b/bar.txt"
-               "@@ -1 +1 @@"
-               "-older"
-               "+newer")
-             "\n"))
-    (codex-ide-diff-mode)
+    (let ((diff-text
+           (string-join
+            '("diff --git a/foo.txt b/foo.txt"
+              "--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -1 +1 @@"
+              "-old"
+              "+new"
+              "diff --git a/bar.txt b/bar.txt"
+              "--- a/bar.txt"
+              "+++ b/bar.txt"
+              "@@ -1 +1 @@"
+              "-older"
+              "+newer")
+            "\n")))
+      (codex-ide-diff-mode)
+      (codex-ide-diff--render-text diff-text diff-text default-directory))
     (should (= (codex-ide-diff-collapse-all-files) 2))
-    (let ((folds (seq-filter
-                  (lambda (overlay)
-                    (overlay-get overlay 'codex-ide-diff-file-fold))
-                  (overlays-in (point-min) (point-max)))))
-      (should (= (length folds) 2))
-      (dolist (overlay folds)
-        (should (overlay-get overlay 'invisible))
-        (should (string-match-p
-                 "hidden diff lines"
-                 (or (overlay-get overlay 'after-string) "")))))
+    (should (seq-every-p #'codex-ide-section-hidden
+                         (codex-ide-diff--file-sections)))
     (codex-ide-diff-expand-all-files)
-    (should-not
-     (seq-some
-      (lambda (overlay)
-        (overlay-get overlay 'codex-ide-diff-file-fold))
-      (overlays-in (point-min) (point-max))))))
+    (should-not (seq-some #'codex-ide-section-hidden
+                          (codex-ide-diff--file-sections)))))
 
 (ert-deftest codex-ide-diff-toggle-file-at-point-folds-single-file ()
   (with-temp-buffer
-    (insert (string-join
-             '("diff --git a/foo.txt b/foo.txt"
-               "--- a/foo.txt"
-               "+++ b/foo.txt"
-               "@@ -1 +1 @@"
-               "-old"
-               "+new"
-               "diff --git a/bar.txt b/bar.txt"
-               "--- a/bar.txt"
-               "+++ b/bar.txt"
-               "@@ -1 +1 @@"
-               "-older"
-               "+newer")
-             "\n"))
-    (codex-ide-diff-mode)
+    (let ((diff-text
+           (string-join
+            '("diff --git a/foo.txt b/foo.txt"
+              "--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -1 +1 @@"
+              "-old"
+              "+new"
+              "diff --git a/bar.txt b/bar.txt"
+              "--- a/bar.txt"
+              "+++ b/bar.txt"
+              "@@ -1 +1 @@"
+              "-older"
+              "+newer")
+            "\n")))
+      (codex-ide-diff-mode)
+      (codex-ide-diff--render-text diff-text diff-text default-directory))
     (goto-char (point-min))
+    (search-forward "foo.txt +1 -1")
+    (beginning-of-line)
     (codex-ide-diff-toggle-file-at-point)
-    (let ((folds (seq-filter
-                  (lambda (overlay)
-                    (overlay-get overlay 'codex-ide-diff-file-fold))
-                  (overlays-in (point-min) (point-max)))))
-      (should (= (length folds) 1))
-      (should (string-match-p
-               "foo\\.txt"
-               (buffer-substring-no-properties
-                (point-min)
-                (overlay-start (car folds))))))
+    (let ((sections (codex-ide-diff--file-sections)))
+      (should (= (length sections) 2))
+      (should (codex-ide-section-hidden (car sections)))
+      (should-not (codex-ide-section-hidden (cadr sections))))
     (codex-ide-diff-toggle-file-at-point)
-    (should-not
-     (seq-some
-      (lambda (overlay)
-        (overlay-get overlay 'codex-ide-diff-file-fold))
-      (overlays-in (point-min) (point-max))))))
+    (should-not (seq-some #'codex-ide-section-hidden
+                          (codex-ide-diff--file-sections)))))
 
 (ert-deftest codex-ide-diff-collapse-all-files-supports-headerless-normalized-diff ()
   (with-temp-buffer
-    (insert (string-join
-             '("--- a/foo.txt"
-               "+++ b/foo.txt"
-               "@@ -1 +1 @@"
-               "-old"
-               "+new"
-               "--- a/bar.txt"
-               "+++ b/bar.txt"
-               "@@ -1 +1 @@"
-               "-older"
-               "+newer")
-             "\n"))
-    (codex-ide-diff-mode)
+    (let ((diff-text
+           (string-join
+            '("--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -1 +1 @@"
+              "-old"
+              "+new"
+              "--- a/bar.txt"
+              "+++ b/bar.txt"
+              "@@ -1 +1 @@"
+              "-older"
+              "+newer")
+            "\n")))
+      (codex-ide-diff-mode)
+      (codex-ide-diff--render-text diff-text diff-text default-directory))
     (should (= (codex-ide-diff-collapse-all-files) 2))))
+
+(ert-deftest codex-ide-diff-render-groups-repeated-file-sections ()
+  (with-temp-buffer
+    (let ((diff-text
+           (string-join
+            '("diff --git a/foo.txt b/foo.txt"
+              "--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -1 +1 @@"
+              "-old"
+              "+new"
+              "diff --git a/bar.txt b/bar.txt"
+              "--- a/bar.txt"
+              "+++ b/bar.txt"
+              "@@ -1 +1 @@"
+              "-before"
+              "+after"
+              "diff --git a/foo.txt b/foo.txt"
+              "--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -10 +10 @@"
+              "-older"
+              "+newer")
+            "\n")))
+      (codex-ide-diff-mode)
+      (codex-ide-diff--render-text diff-text diff-text default-directory))
+    (let ((sections (codex-ide-diff--file-sections)))
+      (should (= (length sections) 2))
+      (should (string-match-p
+               (regexp-quote "foo.txt +2 -2")
+               (buffer-substring-no-properties
+                (codex-ide-section-heading-start (car sections))
+                (codex-ide-section-heading-end (car sections)))))
+      (should (= (length (codex-ide-section-children (car sections))) 2))
+      (should (string-match-p
+               (regexp-quote "bar.txt +1 -1")
+               (buffer-substring-no-properties
+                (codex-ide-section-heading-start (cadr sections))
+		(codex-ide-section-heading-end (cadr sections))))))))
+
+(ert-deftest codex-ide-diff-render-inserts-collapsed-summary-section ()
+  (with-temp-buffer
+    (let ((diff-text
+           (string-join
+            '("diff --git a/foo.txt b/foo.txt"
+              "--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -1,2 +1,3 @@"
+              " keep"
+              "-old"
+              "+new"
+              "+extra"
+              "diff --git a/bar.txt b/bar.txt"
+              "--- a/bar.txt"
+              "+++ b/bar.txt"
+              "@@ -10 +10 @@"
+              "-before"
+              "+after")
+            "\n")))
+      (codex-ide-diff-mode)
+      (codex-ide-diff--render-text diff-text diff-text default-directory))
+    (let ((summary (car codex-ide-section--root-sections)))
+      (should (eq (codex-ide-section-type summary) 'summary))
+      (should-not (codex-ide-section-hidden summary))
+      (should (string-match-p
+               (regexp-quote "2 files changed, 3 insertions(+), 2 deletions(-)")
+               (buffer-substring-no-properties
+                (codex-ide-section-heading-start summary)
+                (codex-ide-section-heading-end summary)))))
+    (should (string-match-p
+             (rx line-start "foo.txt" (+ space) "|" (+ space) "3" (+ space) "++-")
+             (buffer-string)))
+    (should (string-match-p
+             (rx line-start "bar.txt" (+ space) "|" (+ space) "2" (+ space) "+-")
+             (buffer-string)))
+    (should (string-match-p
+             (rx line-start "bar.txt" (+ space) "|" (+ space) "2" (+ space) "+-"
+                 "\n\n"
+                 "foo.txt +2 -1")
+             (buffer-substring-no-properties (point-min) (point-max))))
+    (should (= (length (codex-ide-diff--file-sections)) 2))))
+
+(ert-deftest codex-ide-diff-render-section-headings-are-bold ()
+  (with-temp-buffer
+    (let ((diff-text
+           (string-join
+            '("diff --git a/foo.txt b/foo.txt"
+              "--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -1 +1 @@"
+              "-old"
+              "+new")
+            "\n")))
+      (codex-ide-diff-mode)
+      (codex-ide-diff--render-text diff-text diff-text default-directory))
+    (cl-labels ((face-at (section)
+                  (get-text-property
+                   (codex-ide-section-heading-start section)
+                   'face))
+                (face-includes-p (face target)
+                  (if (listp face)
+                      (memq target face)
+                    (eq face target))))
+      (let* ((summary (car codex-ide-section--root-sections))
+             (file (car (codex-ide-diff--file-sections)))
+             (hunk (car (codex-ide-section-children file)))
+             (hunk-face (face-at hunk)))
+        (should (face-includes-p (face-at summary) 'bold))
+        (should (face-includes-p (face-at file) 'bold))
+        (should (face-includes-p hunk-face 'bold))
+        (should (= (get-text-property
+                    (codex-ide-section-heading-start hunk)
+                    'codex-ide-diff-line-index)
+                   3))))))
+
+(ert-deftest codex-ide-diff-render-file-heading-shows-nonzero-line-stats ()
+  (with-temp-buffer
+    (let ((diff-text
+           (string-join
+            '("diff --git a/foo.txt b/foo.txt"
+              "--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -1,2 +1,3 @@"
+              " keep"
+              "-old"
+              "+new"
+              "+extra"
+              "diff --git a/remove-only.txt b/remove-only.txt"
+              "--- a/remove-only.txt"
+              "+++ b/remove-only.txt"
+              "@@ -1,2 +1 @@"
+              "-gone"
+              " keep"
+              "diff --git a/add-only.txt b/add-only.txt"
+              "--- a/add-only.txt"
+              "+++ b/add-only.txt"
+              "@@ -1 +1,2 @@"
+              " keep"
+              "+added")
+            "\n")))
+      (codex-ide-diff-mode)
+      (codex-ide-diff--render-text diff-text diff-text default-directory))
+    (let* ((sections (codex-ide-diff--file-sections))
+           (foo (car sections))
+           (remove-only (cadr sections))
+           (add-only (caddr sections))
+           (foo-heading
+            (buffer-substring
+             (codex-ide-section-heading-start foo)
+             (codex-ide-section-heading-end foo)))
+           (remove-heading
+            (buffer-substring-no-properties
+             (codex-ide-section-heading-start remove-only)
+             (codex-ide-section-heading-end remove-only)))
+           (add-heading
+            (buffer-substring-no-properties
+             (codex-ide-section-heading-start add-only)
+             (codex-ide-section-heading-end add-only))))
+      (should (string-match-p
+               (regexp-quote "foo.txt +2 -1")
+               (substring-no-properties foo-heading)))
+      (should (string-match-p
+               (regexp-quote "remove-only.txt -1")
+               remove-heading))
+      (should-not (string-match-p
+                   (regexp-quote "remove-only.txt +")
+                   remove-heading))
+      (should (string-match-p
+               (regexp-quote "add-only.txt +1")
+               add-heading))
+      (should-not (string-match-p
+                   (regexp-quote "add-only.txt +1 -")
+                   add-heading))
+      (should (memq 'codex-ide-file-diff-added-face
+                    (get-text-property
+                     (string-match-p (regexp-quote "+2") foo-heading)
+                     'face
+                     foo-heading)))
+      (should (memq 'codex-ide-file-diff-removed-face
+                    (get-text-property
+                     (string-match-p (regexp-quote "-1") foo-heading)
+                     'face
+                     foo-heading))))))
+
+(ert-deftest codex-ide-diff-render-summary-groups-repeated-file-stats ()
+  (with-temp-buffer
+    (let ((diff-text
+           (string-join
+            '("diff --git a/foo.txt b/foo.txt"
+              "--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -1 +1 @@"
+              "-old"
+              "+new"
+              "diff --git a/foo.txt b/foo.txt"
+              "--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -10 +10,2 @@"
+              "+extra")
+            "\n")))
+      (codex-ide-diff-mode)
+      (codex-ide-diff--render-text diff-text diff-text default-directory))
+    (let ((summary (car codex-ide-section--root-sections)))
+      (should (string-match-p
+               (regexp-quote "1 file changed, 2 insertions(+), 1 deletion(-)")
+               (buffer-substring-no-properties
+                (codex-ide-section-heading-start summary)
+                (codex-ide-section-heading-end summary)))))
+    (should (string-match-p
+             (rx line-start "foo.txt" (+ space) "|" (+ space) "3" (+ space) "++-")
+             (buffer-string)))))
+
+(ert-deftest codex-ide-diff-render-hides-ordinary-file-headers ()
+  (with-temp-buffer
+    (let ((diff-text
+           (string-join
+            '("diff --git a/foo.txt b/foo.txt"
+              "index 1234567..89abcde 100644"
+              "--- a/foo.txt"
+              "+++ b/foo.txt"
+              "@@ -1 +1 @@"
+              "-old"
+              "+new")
+            "\n")))
+      (codex-ide-diff-mode)
+      (codex-ide-diff--render-text diff-text diff-text default-directory))
+    (should-not (string-match-p
+                 (regexp-quote "diff --git a/foo.txt b/foo.txt")
+                 (buffer-string)))
+    (should-not (string-match-p
+                 (regexp-quote "index 1234567..89abcde 100644")
+                 (buffer-string)))
+    (should-not (string-match-p
+                 (regexp-quote "--- a/foo.txt")
+                 (buffer-string)))
+    (should-not (string-match-p
+                 (regexp-quote "+++ b/foo.txt")
+                 (buffer-string)))
+    (should (string-match-p
+             (regexp-quote "@@ -1 +1 @@")
+             (buffer-string)))
+    (should (string-match-p
+             (regexp-quote "+new")
+             (buffer-string)))))
 
 (ert-deftest codex-ide-diff-source-location-tracks-hunk-new-lines ()
   (let ((diff-text
@@ -264,6 +552,31 @@
                   "*codex[my-project]*")
                  "*codex[my-project]*-session-diff")))
 
+(ert-deftest codex-ide-session-diff-mode-header-line-describes-source ()
+  (with-temp-buffer
+    (codex-ide-session-diff-mode)
+    (should (equal (substring-no-properties
+                    (codex-ide-session-diff--header-line))
+                   " Codex session diff | live | grouped by file "))
+    (should (equal header-line-format
+                   '(:eval (codex-ide-session-diff--header-line))))
+    (should (eq (get-text-property
+                 0
+                 'face
+                 (codex-ide-session-diff--header-line))
+                'codex-ide-session-diff-header-face))
+    (should (equal (get 'codex-ide-session-diff-header-face
+                        'face-defface-spec)
+                   '((t :inherit codex-ide-header-line-face :weight bold))))
+    (setq-local codex-ide-session-diff-source 'transcript)
+    (should (equal (substring-no-properties
+                    (codex-ide-session-diff--header-line))
+                   " Codex session diff | current turn | grouped by file "))
+    (setq-local codex-ide-session-diff-source 'pinned)
+    (should (equal (substring-no-properties
+                    (codex-ide-session-diff--header-line))
+                   " Codex session diff | pinned turn | grouped by file "))))
+
 (ert-deftest codex-ide-session-diff-open-uses-canonical-mode-and-live-source ()
   (let* ((session-buffer (generate-new-buffer "*codex[test-session-diff]*"))
          (session (make-instance 'codex-ide-session
@@ -291,8 +604,12 @@
           (with-current-buffer diff-buffer
             (should (eq major-mode 'codex-ide-session-diff-mode))
             (should (derived-mode-p 'codex-ide-diff-mode))
+            (should (derived-mode-p 'codex-ide-section-mode))
             (should (eq codex-ide-session-diff--session session))
             (should (eq codex-ide-session-diff-source 'live))
+            (should (equal (substring-no-properties
+                            (codex-ide-session-diff--header-line))
+                           " Codex session diff | live | grouped by file "))
             (should (string-match-p "foo\\.txt" (buffer-string)))))
       (when (buffer-live-p diff-buffer)
         (kill-buffer diff-buffer))

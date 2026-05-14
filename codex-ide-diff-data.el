@@ -136,6 +136,72 @@
          diff)
    "\n"))
 
+(defun codex-ide-diff-data-display-path (path directory)
+  "Return diff PATH shortened relative to DIRECTORY when possible."
+  (cond
+   ((not (stringp path)) path)
+   ((equal path "/dev/null") path)
+   (t
+    (let* ((side-prefix
+            (and (or (string-prefix-p "a/" path)
+                     (string-prefix-p "b/" path))
+                 (substring path 0 2)))
+           (raw-path (if side-prefix (substring path 2) path))
+           (root (and directory
+                      (file-name-as-directory
+                       (expand-file-name directory))))
+           (expanded-path (and (file-name-absolute-p raw-path)
+                               (expand-file-name raw-path))))
+      (if (and root
+               expanded-path
+               (string-prefix-p root expanded-path))
+          (concat side-prefix
+                  (file-relative-name expanded-path root))
+        path)))))
+
+(defun codex-ide-diff-data-display-header-line (line directory)
+  "Return diff header LINE with project-local paths shortened for display."
+  (cond
+   ((string-match
+     (rx line-start "diff --git "
+         (group (+ (not (any " \n"))))
+         (+ space)
+         (group (+ (not (any " \n"))))
+         line-end)
+     line)
+    (format "diff --git %s %s"
+            (codex-ide-diff-data-display-path
+             (match-string 1 line)
+             directory)
+            (codex-ide-diff-data-display-path
+             (match-string 2 line)
+             directory)))
+   ((string-match
+     (rx line-start
+         (group (or "---" "+++"))
+         (+ space)
+         (group (+ (not (any "\t\n"))))
+         (group (? "\t" (* nonl)))
+         line-end)
+     line)
+    (format "%s %s%s"
+            (match-string 1 line)
+            (codex-ide-diff-data-display-path
+             (match-string 2 line)
+             directory)
+            (match-string 3 line)))
+   (t line)))
+
+(defun codex-ide-diff-data-display-text (diff-text directory)
+  "Return DIFF-TEXT with project-local diff header paths shortened."
+  (if (stringp diff-text)
+      (string-join
+       (mapcar (lambda (line)
+                 (codex-ide-diff-data-display-header-line line directory))
+               (split-string diff-text "\n"))
+       "\n")
+    diff-text))
+
 (defun codex-ide--file-change-diff-text (item)
   "Extract a human-readable diff string from file-change ITEM."
   (let ((item-diff

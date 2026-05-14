@@ -9,16 +9,16 @@
 ;; This module owns dedicated diff-buffer presentation for Codex file changes.
 ;;
 ;; It turns Codex-provided patch text into a standalone `codex-ide-diff-mode'
-;; buffer derived from `diff-mode' and displays that buffer using codex-ide's
-;; normal window policy.  Keeping this separate from transcript control lets the
-;; transcript layer stay focused on when a diff should be offered while this
-;; module owns how the diff is shown.
+;; buffer derived from `codex-ide-section-mode' and displays that buffer using
+;; codex-ide's normal window policy.  Keeping this separate from transcript
+;; control lets the transcript layer stay focused on when a diff should be
+;; offered while this module owns how the diff is shown.
 
 ;;; Code:
 
 (require 'cl-lib)
-(require 'diff-mode)
 (require 'codex-ide-diff-data)
+(require 'codex-ide-section)
 (require 'subr-x)
 
 (declare-function codex-ide-display-buffer "codex-ide-window"
@@ -37,7 +37,7 @@
 
 (defvar codex-ide-diff-mode-map
   (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map diff-mode-map)
+    (set-keymap-parent map codex-ide-section-mode-map)
     (define-key map (kbd "C-c TAB") #'codex-ide-diff-toggle-file-at-point)
     (define-key map (kbd "C-c C-a") #'codex-ide-diff-collapse-all-files)
     (define-key map (kbd "C-c C-e") #'codex-ide-diff-expand-all-files)
@@ -46,7 +46,7 @@
     map)
   "Keymap used in standalone Codex diff buffers.")
 
-(define-derived-mode codex-ide-diff-mode diff-mode "Codex-Diff"
+(define-derived-mode codex-ide-diff-mode codex-ide-section-mode "Codex-Diff"
   "Major mode for standalone Codex diff buffers.
 
 \\<codex-ide-diff-mode-map>
@@ -54,6 +54,15 @@
 * \\[codex-ide-diff-collapse-all-files] collapses all file diffs.
 * \\[codex-ide-diff-expand-all-files] expands all file diffs.
 * \\[codex-ide-diff-goto-source-at-point] jumps to source for the diff line at point.")
+
+(defvar-local codex-ide-diff--raw-text nil
+  "Raw diff text backing the current Codex diff buffer.")
+
+(defvar-local codex-ide-diff--display-text nil
+  "Display-normalized diff text backing the current Codex diff buffer.")
+
+(defvar-local codex-ide-diff--directory nil
+  "Directory used to resolve source paths in the current Codex diff buffer.")
 
 (defvar-local codex-ide-session-diff--session nil
   "Codex session associated with the current session diff buffer.")
@@ -65,6 +74,11 @@ The value is one of `live', `transcript', or `pinned'.")
 (defvar-local codex-ide-session-diff--turn-id nil
   "Turn id selected by the current session diff buffer, when any.")
 
+(defface codex-ide-session-diff-header-face
+  '((t :inherit codex-ide-header-line-face :weight bold))
+  "Face used for the Codex session diff header-line label."
+  :group 'codex-ide)
+
 (defvar codex-ide-session-diff-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map codex-ide-diff-mode-map)
@@ -75,9 +89,27 @@ The value is one of `live', `transcript', or `pinned'.")
     map)
   "Keymap used in canonical Codex session diff buffers.")
 
+(defun codex-ide-session-diff--source-label (&optional source)
+  "Return the header-line label for session diff SOURCE."
+  (pcase (or source codex-ide-session-diff-source)
+    ('live "live")
+    ('transcript "current turn")
+    ('pinned "pinned turn")
+    (_ "changes")))
+
+(defun codex-ide-session-diff--header-line ()
+  "Return the header-line text for the current session diff buffer."
+  (propertize
+   (concat " Codex session diff | "
+           (codex-ide-session-diff--source-label)
+           " | grouped by file ")
+   'face 'codex-ide-session-diff-header-face))
+
 (define-derived-mode codex-ide-session-diff-mode codex-ide-diff-mode
   "Codex-Session-Diff"
   "Major mode for a canonical Codex session diff buffer."
+  (setq-local header-line-format
+              '(:eval (codex-ide-session-diff--header-line)))
   (setq-local mode-line-process
               '("[" (:eval (symbol-name codex-ide-session-diff-source)) "]")))
 
@@ -129,103 +161,288 @@ The value is one of `live', `transcript', or `pinned'.")
               (buffer-name session-buffer)
             session-buffer)))
 
-(defun codex-ide-diff--file-section-header-regexp ()
-  "Return the regexp used to find file section headers."
-  (save-excursion
-    (goto-char (point-min))
-    (if (re-search-forward (rx line-start "diff --git ") nil t)
-        (rx line-start "diff --git ")
-      (rx line-start
-          (or "--- "
-              "*** "
-              "Index: ")))))
+(defun codex-ide-diff--line-face (line)
+  "Return the face to use for diff LINE."
+  (cond
+   ((string-prefix-p "@@" line) 'codex-ide-file-diff-hunk-face)
+   ((or (string-prefix-p "diff --git" line)
+        (string-prefix-p "--- " line)
+        (string-prefix-p "+++ " line)
+        (string-prefix-p "index " line))
+    'codex-ide-file-diff-header-face)
+   ((string-prefix-p "+" line) 'codex-ide-file-diff-added-face)
+   ((string-prefix-p "-" line) 'codex-ide-file-diff-removed-face)
+   (t 'codex-ide-file-diff-context-face)))
 
-(defun codex-ide-diff--collect-file-sections ()
-  "Return file sections in the current diff buffer.
-Each section is a plist containing `:start', `:body-start', and `:end'."
-  (let ((header-regexp (codex-ide-diff--file-section-header-regexp))
-        sections)
-    (save-excursion
-      (goto-char (point-min))
-      (while (re-search-forward header-regexp nil t)
-        (goto-char (match-beginning 0))
-        (let* ((start (point))
-               (body-start (min (point-max)
-                                (save-excursion
-                                  (forward-line 1)
-                                  (point))))
-               (end (save-excursion
-                      (forward-line 1)
-                      (if (re-search-forward header-regexp nil t)
-                          (match-beginning 0)
-                        (point-max)))))
-          (when (> end start)
-            (push (list :start start
-                        :body-start body-start
-                        :end end)
-                  sections))
-          (goto-char (max (1+ (point)) (line-end-position))))))
-    (nreverse sections)))
+(defun codex-ide-diff--line-file-start-p (lines index &optional git-only)
+  "Return non-nil when LINES at INDEX starts a file diff.
+When GIT-ONLY is non-nil, only recognize `diff --git' headers."
+  (let ((line (nth index lines))
+        (next (nth (1+ index) lines)))
+    (or (and line (string-prefix-p "diff --git " line))
+        (and (not git-only)
+             line next
+             (string-prefix-p "--- " line)
+             (string-prefix-p "+++ " next)))))
 
-(defun codex-ide-diff--delete-file-fold-overlays ()
-  "Delete all file-fold overlays in the current buffer."
-  (remove-overlays (point-min) (point-max) 'codex-ide-diff-file-fold t))
+(defun codex-ide-diff--path-from-diff-git-line (line)
+  "Return the new path from a diff --git LINE, or nil."
+  (when (string-match
+         (rx line-start "diff --git " (? "a/")
+             (+ (not (any " \n")))
+             (+ space) (? "b/")
+             (group (+ (not (any " \n")))))
+         line)
+    (codex-ide-diff--strip-path-prefix (match-string 1 line))))
 
-(defun codex-ide-diff--line-count-between (start end)
-  "Return the number of whole or partial lines between START and END."
-  (max 0
-       (save-excursion
-         (goto-char start)
-         (count-lines start end))))
+(defun codex-ide-diff--path-from-header-line (line)
+  "Return the path from a --- or +++ header LINE, or nil."
+  (when (string-match
+         (rx line-start (or "---" "+++") (+ space)
+             (group (+ (not (any "\t\n")))))
+         line)
+    (let ((path (match-string 1 line)))
+      (unless (equal path "/dev/null")
+        (codex-ide-diff--strip-path-prefix path)))))
 
-(defun codex-ide-diff--make-file-fold-overlay (body-start end)
-  "Hide file diff body from BODY-START to END."
-  (when (> end body-start)
-    (let* ((line-count (codex-ide-diff--line-count-between body-start end))
-           (overlay (make-overlay body-start end nil t nil)))
-      (overlay-put overlay 'codex-ide-diff-file-fold t)
-      (overlay-put overlay 'evaporate t)
-      (overlay-put overlay 'invisible t)
-      (overlay-put overlay 'isearch-open-invisible #'delete-overlay)
-      (overlay-put overlay
-                   'after-string
-                   (propertize
-                    (format "  ... %d hidden diff %s\n"
-                            line-count
-                            (if (= line-count 1) "line" "lines"))
-                    'face 'shadow))
-      overlay)))
+(defun codex-ide-diff--parse-file-section (lines start)
+  "Parse a file diff from LINES starting at START.
+Return a cons of the parsed file plist and the next line index."
+  (let ((index start)
+        (line-count (length lines))
+        header-lines
+        hunks
+        path
+        old-path
+        (git-block (string-prefix-p "diff --git " (nth start lines))))
+    (while (and (< index line-count)
+                (not (and (> index start)
+                          (codex-ide-diff--line-file-start-p
+                           lines
+                           index
+                           git-block)))
+                (not (string-prefix-p "@@" (nth index lines))))
+      (let ((line (nth index lines)))
+        (push (cons index line) header-lines)
+        (cond
+         ((string-prefix-p "diff --git " line)
+          (setq path (or (codex-ide-diff--path-from-diff-git-line line)
+                         path)))
+         ((string-prefix-p "--- " line)
+          (setq old-path (or (codex-ide-diff--path-from-header-line line)
+                             old-path)))
+         ((string-prefix-p "+++ " line)
+          (setq path (or (codex-ide-diff--path-from-header-line line)
+                         path))))
+        (setq index (1+ index))))
+    (while (and (< index line-count)
+                (not (codex-ide-diff--line-file-start-p
+                      lines
+                      index
+                      git-block)))
+      (let ((line (nth index lines)))
+        (if (string-prefix-p "@@" line)
+            (let ((hunk-header (cons index line))
+                  body-lines)
+              (setq index (1+ index))
+              (while (and (< index line-count)
+                          (not (codex-ide-diff--line-file-start-p
+                                lines
+                                index
+                                git-block))
+                          (not (string-prefix-p "@@" (nth index lines))))
+                (push (cons index (nth index lines)) body-lines)
+                (setq index (1+ index)))
+              (push (list :header hunk-header
+                          :lines (nreverse body-lines))
+                    hunks))
+          (push (cons index line) header-lines)
+          (setq index (1+ index)))))
+    (cons (list :path (or path old-path "changes")
+                :old-path old-path
+                :header-lines (nreverse header-lines)
+                :hunks (nreverse hunks))
+          index)))
+
+(defun codex-ide-diff--parse-files (diff-text)
+  "Return parsed file sections from DIFF-TEXT."
+  (let ((lines (split-string diff-text "\n"))
+        (index 0)
+        files)
+    (while (< index (length lines))
+      (if (codex-ide-diff--line-file-start-p lines index)
+          (let ((parsed (codex-ide-diff--parse-file-section lines index)))
+            (push (car parsed) files)
+            (setq index (cdr parsed)))
+        (setq index (1+ index))))
+    (nreverse files)))
+
+(defun codex-ide-diff--group-files-by-path (files)
+  "Return FILES grouped by display path while preserving hunk order."
+  (let (grouped)
+    (dolist (file files)
+      (let* ((path (plist-get file :path))
+             (existing
+              (cl-find path grouped
+                       :key (lambda (candidate)
+                              (plist-get candidate :path))
+                       :test #'equal)))
+        (if existing
+            (setf (plist-get existing :hunks)
+                  (append (plist-get existing :hunks)
+                          (plist-get file :hunks)))
+          (push (copy-tree file) grouped))))
+    (nreverse grouped)))
+
+(defun codex-ide-diff--file-sections ()
+  "Return top-level file sections in the current diff buffer."
+  (cl-remove-if-not
+   (lambda (section)
+     (eq (codex-ide-section-type section) 'file))
+   codex-ide-section--root-sections))
+
+(defun codex-ide-diff--file-stats (file)
+  "Return a plist summarizing additions and deletions in parsed FILE."
+  (let ((added 0)
+        (removed 0))
+    (dolist (hunk (plist-get file :hunks))
+      (dolist (indexed-line (plist-get hunk :lines))
+        (let ((line (cdr indexed-line)))
+          (cond
+           ((and (string-prefix-p "+" line)
+                 (not (string-prefix-p "+++" line)))
+            (setq added (1+ added)))
+           ((and (string-prefix-p "-" line)
+                 (not (string-prefix-p "---" line)))
+            (setq removed (1+ removed)))))))
+    (list :path (plist-get file :path)
+          :added added
+          :removed removed
+          :changed (+ added removed))))
+
+(defun codex-ide-diff--plural (count singular plural)
+  "Return SINGULAR or PLURAL for COUNT."
+  (if (= count 1) singular plural))
+
+(defun codex-ide-diff--summary-heading (stats)
+  "Return the top summary heading for file STATS."
+  (let* ((file-count (length stats))
+         (added (cl-loop for stat in stats
+                         sum (or (plist-get stat :added) 0)))
+         (removed (cl-loop for stat in stats
+                           sum (or (plist-get stat :removed) 0))))
+    (format "%d %s changed, %d %s(+), %d %s(-)"
+            file-count
+            (codex-ide-diff--plural file-count "file" "files")
+            added
+            (codex-ide-diff--plural added "insertion" "insertions")
+            removed
+            (codex-ide-diff--plural removed "deletion" "deletions"))))
+
+(defun codex-ide-diff--section-heading (text &optional face properties)
+  "Return TEXT styled as a Codex diff section heading.
+When FACE is non-nil, combine it with `bold'.  PROPERTIES are additional text
+properties to apply to the heading."
+  (let ((heading (copy-sequence text)))
+    (dotimes (index (length heading))
+      (let ((existing-face (get-text-property index 'face heading)))
+        (put-text-property
+         index
+         (1+ index)
+         'face
+         (delq nil
+               (append (list 'bold face)
+                       (if (listp existing-face)
+                           existing-face
+                         (list existing-face))))
+         heading)))
+    (when properties
+      (add-text-properties 0 (length heading) properties heading))
+    heading))
+
+(defun codex-ide-diff--file-stat-segment (count prefix face)
+  "Return a propertized file heading stat segment for COUNT."
+  (unless (zerop count)
+    (propertize (format " %s%d" prefix count) 'face face)))
+
+(defun codex-ide-diff--stat-bar (added removed max-changed)
+  "Return a compact proportional stat bar for ADDED and REMOVED lines."
+  (let* ((changed (+ added removed))
+         (width 36)
+         (bar-width (cond
+                     ((<= changed 0) 0)
+                     ((<= changed width) changed)
+                     (t
+                      (max 1 (ceiling (* changed width)
+                                      (max 1 max-changed))))))
+         (added-width (if (> changed 0)
+                          (round (* bar-width
+                                    (/ (float added) changed)))
+                        0))
+         (removed-width (- bar-width added-width)))
+    (concat (make-string added-width ?+)
+            (make-string removed-width ?-))))
+
+(defun codex-ide-diff--insert-stat-line
+    (stat path-width changed-width max-changed)
+  "Insert one summary line for STAT using PATH-WIDTH and CHANGED-WIDTH."
+  (let* ((path (plist-get stat :path))
+         (added (or (plist-get stat :added) 0))
+         (removed (or (plist-get stat :removed) 0))
+         (changed (or (plist-get stat :changed) 0))
+         (bar (codex-ide-diff--stat-bar added removed max-changed))
+         (added-part (cl-position ?+ bar :test #'char-equal))
+         (removed-part (cl-position ?- bar :test #'char-equal)))
+    (insert (format (format "%%-%ds | %%%dd " path-width changed-width)
+                    path
+                    changed))
+    (when added-part
+      (insert (propertize (substring bar added-part (or removed-part))
+                          'face 'codex-ide-file-diff-added-face)))
+    (when removed-part
+      (insert (propertize (substring bar removed-part)
+                          'face 'codex-ide-file-diff-removed-face)))
+    (insert "\n")))
+
+(defun codex-ide-diff--render-summary (files)
+  "Render a collapsed summary section for parsed FILES."
+  (let* ((stats (mapcar #'codex-ide-diff--file-stats files))
+         (path-width (cl-loop for stat in stats
+                              maximize (length (plist-get stat :path))))
+         (max-changed (cl-loop for stat in stats
+                               maximize (or (plist-get stat :changed) 0)))
+         (changed-width (length (number-to-string (max 0 max-changed)))))
+    (codex-ide-section-insert
+     'summary
+     stats
+     (codex-ide-diff--section-heading
+      (codex-ide-diff--summary-heading stats))
+     (lambda (_section)
+       (dolist (stat stats)
+         (codex-ide-diff--insert-stat-line
+          stat
+          path-width
+          changed-width
+          max-changed)))
+     nil)))
 
 (defun codex-ide-diff--file-section-at-point ()
   "Return the file section containing point, or nil."
-  (let ((pos (point))
-        found)
-    (dolist (section (codex-ide-diff--collect-file-sections) found)
-      (when (and (<= (plist-get section :start) pos)
-                 (< pos (plist-get section :end)))
-        (setq found section)))))
-
-(defun codex-ide-diff--fold-overlay-for-section (section)
-  "Return the fold overlay for SECTION, if any."
-  (cl-find-if
-   (lambda (overlay)
-     (and (overlay-get overlay 'codex-ide-diff-file-fold)
-          (= (overlay-start overlay) (plist-get section :body-start))
-          (= (overlay-end overlay) (plist-get section :end))))
-   (overlays-in (plist-get section :body-start)
-                (plist-get section :end))))
+  (let ((section (codex-ide-section-containing-point)))
+    (while (and section
+                (not (eq (codex-ide-section-type section) 'file)))
+      (setq section (codex-ide-section-parent section)))
+    section))
 
 (defun codex-ide-diff-collapse-all-files ()
   "Collapse all file sections in the current Codex diff buffer."
   (interactive)
   (unless (derived-mode-p 'codex-ide-diff-mode)
     (user-error "Not in a Codex diff buffer"))
-  (codex-ide-diff--delete-file-fold-overlays)
   (let ((count 0))
-    (dolist (section (codex-ide-diff--collect-file-sections))
-      (when (codex-ide-diff--make-file-fold-overlay
-             (plist-get section :body-start)
-             (plist-get section :end))
+    (dolist (section (codex-ide-diff--file-sections))
+      (unless (codex-ide-section-hidden section)
+        (codex-ide-section-hide section)
         (setq count (1+ count))))
     (unless (> count 0)
       (message "No file diffs to collapse"))
@@ -236,7 +453,8 @@ Each section is a plist containing `:start', `:body-start', and `:end'."
   (interactive)
   (unless (derived-mode-p 'codex-ide-diff-mode)
     (user-error "Not in a Codex diff buffer"))
-  (codex-ide-diff--delete-file-fold-overlays))
+  (dolist (section (codex-ide-diff--file-sections))
+    (codex-ide-section-show section)))
 
 (defun codex-ide-diff-toggle-file-at-point ()
   "Toggle the file diff section at point."
@@ -246,11 +464,7 @@ Each section is a plist containing `:start', `:body-start', and `:end'."
   (let ((section (codex-ide-diff--file-section-at-point)))
     (unless section
       (user-error "No file diff at point"))
-    (if-let* ((overlay (codex-ide-diff--fold-overlay-for-section section)))
-        (delete-overlay overlay)
-      (codex-ide-diff--make-file-fold-overlay
-       (plist-get section :body-start)
-       (plist-get section :end)))))
+    (codex-ide-section-toggle section)))
 
 (defun codex-ide-session-diff-buffer-name-for-session (session-buffer)
   "Return the canonical session diff buffer name for SESSION-BUFFER."
@@ -338,6 +552,91 @@ diff line has no corresponding source location."
   "Return the zero-based line index at point in the current buffer."
   (1- (line-number-at-pos)))
 
+(defun codex-ide-diff--insert-line (indexed-line)
+  "Insert INDEXED-LINE with diff styling and source-jump metadata."
+  (let ((index (car indexed-line))
+        (line (cdr indexed-line)))
+    (insert (propertize
+             line
+             'face (codex-ide-diff--line-face line)
+             'keymap codex-ide-diff-inline-body-map
+             'help-echo "RET jumps to source"
+             'codex-ide-diff-line-index index))
+    (insert "\n")))
+
+(defun codex-ide-diff--ordinary-file-header-line-p (line)
+  "Return non-nil when LINE is redundant in the section diff view."
+  (or (string-prefix-p "diff --git " line)
+      (string-prefix-p "--- " line)
+      (string-prefix-p "+++ " line)
+      (string-prefix-p "index " line)))
+
+(defun codex-ide-diff--file-heading (file)
+  "Return a section heading for parsed diff FILE."
+  (let* ((path (plist-get file :path))
+         (old-path (plist-get file :old-path))
+         (stats (codex-ide-diff--file-stats file))
+         (added (or (plist-get stats :added) 0))
+         (removed (or (plist-get stats :removed) 0)))
+    (concat
+     (if (and old-path (not (equal old-path path)))
+         (format "%s -> %s" old-path path)
+       path)
+     (codex-ide-diff--file-stat-segment
+      added
+      "+"
+      'codex-ide-file-diff-added-face)
+     (codex-ide-diff--file-stat-segment
+      removed
+      "-"
+      'codex-ide-file-diff-removed-face))))
+
+(defun codex-ide-diff--render-file (file)
+  "Render parsed diff FILE as a section."
+  (codex-ide-section-insert
+   'file
+   file
+   (codex-ide-diff--section-heading
+    (codex-ide-diff--file-heading file))
+   (lambda (_section)
+     (dolist (line (plist-get file :header-lines))
+       (unless (codex-ide-diff--ordinary-file-header-line-p (cdr line))
+         (codex-ide-diff--insert-line line)))
+     (dolist (hunk (plist-get file :hunks))
+       (let ((header (plist-get hunk :header)))
+         (codex-ide-section-insert
+          'hunk
+          hunk
+          (codex-ide-diff--section-heading
+           (cdr header)
+           nil
+           (list 'codex-ide-diff-line-index (car header)))
+          (lambda (_hunk-section)
+            (dolist (line (plist-get hunk :lines))
+              (codex-ide-diff--insert-line line)))))))))
+
+(defun codex-ide-diff--render-text (raw-text display-text directory)
+  "Render RAW-TEXT and DISPLAY-TEXT in the current Codex diff buffer."
+  (let ((files (codex-ide-diff--group-files-by-path
+                (codex-ide-diff--parse-files display-text))))
+    (setq-local codex-ide-diff--raw-text raw-text)
+    (setq-local codex-ide-diff--display-text display-text)
+    (setq-local codex-ide-diff--directory directory)
+    (codex-ide-section-reset)
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (if files
+          (progn
+            (codex-ide-diff--render-summary files)
+            (insert "\n")
+            (dolist (file files)
+              (codex-ide-diff--render-file file)))
+        (insert (string-trim-right display-text))
+        (insert "\n"))
+      (setq-local buffer-read-only t)
+      (set-buffer-modified-p nil)
+      (goto-char (point-min)))))
+
 (defun codex-ide-diff-goto-source (diff-text line-index &optional directory)
   "Jump from DIFF-TEXT LINE-INDEX to the corresponding source location.
 DIRECTORY is used to resolve relative diff paths."
@@ -361,29 +660,40 @@ DIRECTORY is used to resolve relative diff paths."
   "Jump to the source location corresponding to the diff line at POS."
   (interactive)
   (let* ((pos (or pos (point)))
-         (overlay (get-char-property pos 'codex-ide-diff-overlay))
+         (property-pos (if (> pos (point-min)) (1- pos) pos))
+         (overlay (or (get-char-property pos 'codex-ide-diff-overlay)
+                      (get-char-property property-pos 'codex-ide-diff-overlay)))
+         (rendered-line-index
+          (or (get-text-property pos 'codex-ide-diff-line-index)
+              (get-text-property property-pos 'codex-ide-diff-line-index)))
          (body-start (and (overlayp overlay)
                           (overlay-get overlay :body-start)))
          (diff-text (or (and (overlayp overlay)
                              (overlay-get overlay :result-full-text))
+                        codex-ide-diff--raw-text
                         (and (overlayp overlay)
                              (overlay-get overlay :display-text))
+                        codex-ide-diff--display-text
                         (buffer-substring-no-properties
                          (point-min)
                          (point-max))))
          (directory (or (and (overlayp overlay)
                              (overlay-get overlay :directory))
+                        codex-ide-diff--directory
                         default-directory))
-         (line-index (if (and (markerp body-start)
-                              (eq (marker-buffer body-start)
-                                  (current-buffer)))
-                         (save-excursion
-                           (goto-char pos)
-                           (count-lines (marker-position body-start)
-                                        (line-beginning-position)))
+         (line-index (cond
+                      ((integerp rendered-line-index) rendered-line-index)
+                      ((and (markerp body-start)
+                            (eq (marker-buffer body-start)
+                                (current-buffer)))
                        (save-excursion
                          (goto-char pos)
-                         (codex-ide-diff--line-index-at-point)))))
+                         (count-lines (marker-position body-start)
+                                      (line-beginning-position))))
+                      (t
+                       (save-excursion
+                         (goto-char pos)
+                         (codex-ide-diff--line-index-at-point))))))
     (codex-ide-diff-goto-source diff-text line-index directory)))
 
 (defun codex-ide-diff-open-buffer (diff-text &optional buffer-name directory)
@@ -394,21 +704,18 @@ Return the created buffer."
   (unless (and (stringp diff-text)
                (not (string-empty-p (string-trim diff-text))))
     (user-error "No diff text available"))
-  (let ((buffer (if buffer-name
-                    (get-buffer-create buffer-name)
-                  (generate-new-buffer
-                   (codex-ide-diff--generated-buffer-name diff-text)))))
+  (let* ((display-text
+          (codex-ide-diff-data-display-text diff-text directory))
+         (buffer (if buffer-name
+                     (get-buffer-create buffer-name)
+                   (generate-new-buffer
+                    (codex-ide-diff--generated-buffer-name display-text)))))
     (with-current-buffer buffer
       (let ((inhibit-read-only t))
         (when directory
           (setq-local default-directory (file-name-as-directory directory)))
-        (erase-buffer)
-        (insert (string-trim-right diff-text))
-        (insert "\n")
         (codex-ide-diff-mode)
-        (setq-local buffer-read-only t)
-        (set-buffer-modified-p nil)
-        (goto-char (point-min))))
+        (codex-ide-diff--render-text diff-text display-text directory)))
     (codex-ide-display-buffer
      buffer
      codex-ide--display-buffer-other-window-pop-up-action)
@@ -459,16 +766,13 @@ Return the created buffer."
                 source
                 turn-id
                 (error-message-string err))))))
-         (directory (and session (codex-ide-session-directory session))))
+         (directory (and session (codex-ide-session-directory session)))
+         (display-text
+          (codex-ide-diff-data-display-text diff-text directory)))
     (let ((inhibit-read-only t))
       (when directory
         (setq-local default-directory (file-name-as-directory directory)))
-      (erase-buffer)
-      (insert (string-trim-right diff-text))
-      (insert "\n")
-      (setq-local buffer-read-only t)
-      (set-buffer-modified-p nil)
-      (goto-char (point-min)))))
+      (codex-ide-diff--render-text diff-text display-text directory))))
 
 (defun codex-ide-session-diff-refresh (&optional buffer)
   "Refresh BUFFER, or the current canonical session diff buffer."
