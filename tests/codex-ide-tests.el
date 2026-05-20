@@ -7103,6 +7103,12 @@
      (equal (codex-ide-renderer-parse-file-link-target "\\/tmp\\/foo.el#L3C2")
             '("/tmp/foo.el" 3 2))))
 
+  (ert-deftest codex-ide-parse-file-link-target-decodes-percent-encoded-spaces ()
+    (should
+     (equal (codex-ide-renderer-parse-file-link-target
+             "/tmp/folder%20with%20spaces/main.c")
+            '("/tmp/folder with spaces/main.c" nil nil))))
+
   (ert-deftest codex-ide-parse-file-link-target-ignores-permissive-wrappers ()
     (should
      (equal (codex-ide-renderer-parse-file-link-target "</tmp/foo.txt>")
@@ -7155,6 +7161,26 @@
               (should (= (get-text-property pos 'codex-ide-line) expected-line))
             (should-not (get-text-property pos 'codex-ide-line)))
           (should-not (get-text-property pos 'codex-ide-column))))))
+
+  (ert-deftest codex-ide-render-markdown-region-renders-file-links-with-percent-encoded-spaces ()
+    (let* ((project-dir (make-temp-file "codex-ide-tests space-" t))
+           (file-path (expand-file-name "main.c" project-dir)))
+      (unwind-protect
+          (progn
+            (with-temp-file file-path
+              (insert "int main(void) { return 0; }\n"))
+            (with-temp-buffer
+              (insert (format "See [`main.c`](%s)\n"
+                              (replace-regexp-in-string " " "%20" file-path)))
+              (codex-ide-renderer-render-markdown-region (point-min) (point-max))
+              (goto-char (point-min))
+              (search-forward "main.c")
+              (let ((pos (1- (point))))
+                (should (button-at pos))
+                (should (equal (get-text-property pos 'codex-ide-path) file-path))
+                (should-not (string-match-p "%20" (buffer-string))))))
+        (when (file-directory-p project-dir)
+          (delete-directory project-dir t)))))
 
   (ert-deftest codex-ide-render-markdown-region-renders-inline-code ()
     (with-temp-buffer

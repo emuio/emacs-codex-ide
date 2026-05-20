@@ -37,6 +37,7 @@
 (require 'color)
 (require 'seq)
 (require 'subr-x)
+(require 'url-util)
 
 (defmacro codex-ide-renderer--without-undo-recording (&rest body)
   "Run BODY without recording undo entries in the current buffer."
@@ -893,10 +894,15 @@ Return a plist containing `:delete-start', `:boundary', and `:end' markers."
    "[ <]+"
    "[ >]+"))
 
+(defun codex-ide-renderer--decode-file-link-target (target)
+  "Return TARGET with percent-encoded path characters decoded."
+  (url-unhex-string target))
+
 (defun codex-ide-renderer-parse-file-link-target (target)
   "Parse markdown file TARGET into (PATH LINE COLUMN), or nil."
   (let ((normalized
-         (codex-ide-renderer--normalize-file-link-target target)))
+         (codex-ide-renderer--decode-file-link-target
+          (codex-ide-renderer--normalize-file-link-target target))))
     (cond
      ((string-match "\\`\\(/[^#\n]+\\)#L\\([0-9]+\\)\\(?:C\\([0-9]+\\)\\)?\\'" normalized)
       (list (match-string 1 normalized)
