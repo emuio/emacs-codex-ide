@@ -215,7 +215,10 @@
 					 (permissions . (((tool . "emacs_get_buffer_diagnostics"))
 							 ((server . "editor")))))))
 				    (should (string= (codex-ide-session-status session) "approval"))
-				    (should (= (hash-table-count (codex-ide--pending-approvals session)) 1))
+				    (should (= (codex-ide-approvals-data-count
+						session
+						:status 'active)
+					       1))
 				    (should (equal message-text
 						   (format "Codex approval required in %s"
 							   (buffer-name (codex-ide-session-buffer session)))))

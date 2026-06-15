@@ -107,33 +107,33 @@
         (scheduled nil)
         (refreshed nil))
     (codex-ide-test-with-fixture project-dir
-				 (codex-ide-test-with-fake-processes
-				  (cl-letf (((symbol-function 'run-at-time)
-					     (lambda (seconds repeat function &rest args)
-					       (setq scheduled (list seconds repeat function args))
-					       'fake-usage-refresh-timer))
-					    ((symbol-function 'timerp)
-					     (lambda (timer)
-					       (eq timer 'fake-usage-refresh-timer)))
-					    ((symbol-function 'cancel-timer)
-					     (lambda (_timer) nil))
-					    ((symbol-function 'codex-ide-usage-refresh-rate-limits)
-					     (lambda (session)
-					       (setq refreshed session)))
-					    ((symbol-function 'codex-ide-log-message)
-					     (lambda (&rest _) nil)))
-				    (let ((session (codex-ide--create-process-session)))
-				      (codex-ide--schedule-usage-refresh session)
-				      (should scheduled)
-				      (should-not refreshed)
-				      (should (= (nth 0 scheduled)
-						 codex-ide--deferred-usage-refresh-delay))
-				      (apply (nth 2 scheduled) (nth 3 scheduled))
-				      (should (eq refreshed session))
-				      (should-not
-				       (codex-ide--session-metadata-get
-					session
-					:deferred-usage-refresh-timer))))))))
+      (codex-ide-test-with-fake-processes
+        (cl-letf (((symbol-function 'run-at-time)
+                   (lambda (seconds repeat function &rest args)
+                     (setq scheduled (list seconds repeat function args))
+                     'fake-usage-refresh-timer))
+                  ((symbol-function 'timerp)
+                   (lambda (timer)
+                     (eq timer 'fake-usage-refresh-timer)))
+                  ((symbol-function 'cancel-timer)
+                   (lambda (_timer) nil))
+                  ((symbol-function 'codex-ide-usage-refresh-rate-limits)
+                   (lambda (session)
+                     (setq refreshed session)))
+                  ((symbol-function 'codex-ide-log-message)
+                   (lambda (&rest _) nil)))
+          (let ((session (codex-ide--create-process-session)))
+            (codex-ide--schedule-usage-refresh session)
+            (should scheduled)
+            (should-not refreshed)
+            (should (= (nth 0 scheduled)
+                       codex-ide--deferred-usage-refresh-delay))
+            (apply (nth 2 scheduled) (nth 3 scheduled))
+            (should (eq refreshed session))
+            (should-not
+             (codex-ide--session-metadata-get
+              session
+              :deferred-usage-refresh-timer))))))))
 
 (ert-deftest codex-ide-toggle-logging-enabled-flips-state ()
   (let ((codex-ide-logging-enabled nil))
@@ -705,8 +705,8 @@
            (marker-position hidden-end)
            '(invisible codex-ide-test-owned)))
         (codex-ide--with-transcript-render-transaction
-         (session (current-buffer))
-         nil)
+            (session (current-buffer))
+          nil)
         (unwind-protect
             (should (text-property-any
                      (marker-position hidden-start)
@@ -745,8 +745,8 @@
            '(invisible codex-ide-renderer-markdown-deferred
                        codex-ide-markdown-deferred t)))
         (codex-ide--with-transcript-render-transaction
-         (session (current-buffer))
-         nil)
+            (session (current-buffer))
+          nil)
         (should-not (text-property-any
                      list-start
                      prompt-start
@@ -771,8 +771,8 @@
       (codex-ide--set-queued-prompts session '("queued prompt"))
       (should-not (string-match-p "Queued turns:" (buffer-string)))
       (codex-ide--with-transcript-render-transaction
-       (session (current-buffer))
-       nil)
+          (session (current-buffer))
+        nil)
       (should-not (string-match-p "Queued turns:" (buffer-string)))
       (should-not (codex-ide--running-input-list-valid-p session))
       (should (equal (codex-ide--current-input session)
@@ -805,8 +805,8 @@
               :active-input-boundary-marker)))
         (set-marker active-boundary (marker-position boundary))
         (codex-ide--with-transcript-render-transaction
-         (session (current-buffer))
-         nil)
+            (session (current-buffer))
+          nil)
         (should (= (marker-position active-boundary)
                    (marker-position running-end)))))))
 
@@ -825,8 +825,8 @@
         (should (string-suffix-p "> draft" (buffer-string)))
         (setq buffer-undo-list nil)
         (codex-ide--with-transcript-render-transaction
-         (session (current-buffer))
-         nil)
+            (session (current-buffer))
+          nil)
         (should (string-suffix-p "> draft\n\n" (buffer-string)))
         (should-not buffer-undo-list)))))
 
@@ -865,8 +865,8 @@
         (should (overlayp overlay))
         (should (overlay-get overlay 'invisible))
         (codex-ide--with-transcript-render-transaction
-         (session (current-buffer))
-         nil)
+            (session (current-buffer))
+          nil)
         (should (overlay-get overlay 'invisible))
         (should (overlay-get overlay :folded))))))
 
@@ -905,17 +905,17 @@
                              codex-ide-markdown-deferred t)))))
           (with-current-buffer outer-buffer
             (codex-ide--with-transcript-render-transaction
-             (outer-session outer-buffer)
-             (with-current-buffer inner-buffer
-               (codex-ide--with-transcript-render-transaction
-                (inner-session inner-buffer)
-                nil))
-             (with-current-buffer inner-buffer
-               (should-not (text-property-any
-                            (point-min)
-                            (point-max)
-                            'codex-ide-markdown-deferred
-                            t))))))
+                (outer-session outer-buffer)
+              (with-current-buffer inner-buffer
+                (codex-ide--with-transcript-render-transaction
+                    (inner-session inner-buffer)
+                  nil))
+              (with-current-buffer inner-buffer
+                (should-not (text-property-any
+                             (point-min)
+                             (point-max)
+                             'codex-ide-markdown-deferred
+                             t))))))
       (when (buffer-live-p outer-buffer)
         (kill-buffer outer-buffer))
       (when (buffer-live-p inner-buffer)
@@ -1038,6 +1038,11 @@
           (original (symbol-function 'codex-ide--make-region-writable))
           contexts)
       (setq-local codex-ide--session session)
+      (codex-ide-approvals-data-add
+       session
+       "request-1"
+       'elicitation
+       nil)
       (cl-letf (((symbol-function 'codex-ide--make-region-writable)
                  (lambda (&rest args)
                    (push codex-ide--transcript-render-context contexts)
@@ -1045,8 +1050,6 @@
         (codex-ide--render-interactive-request
          session
          "request-1"
-         'elicitation
-         nil
          :title "[Input required]"
          :notify-message "Codex input required in %s"
          :render-body
@@ -5246,14 +5249,14 @@
 						       (windowDurationMins . 10080)))
 					 (planType . "prolite")))
 				      (codex-ide--session-metadata-put
-				       session :token-usage
-				       '((total . ((totalTokens . 305500)))
-					 (modelContextWindow . 258400)
-					 (last . ((totalTokens . 43112)
-						  (inputTokens . 42800)
-						  (cachedInputTokens . 26100)
-						  (outputTokens . 244)
-						  (reasoningOutputTokens . 68)))))
+					       session :token-usage
+					       '((total . ((totalTokens . 305500)))
+						 (modelContextWindow . 258400)
+						 (last . ((totalTokens . 43112)
+							  (inputTokens . 42800)
+							  (cachedInputTokens . 26100)
+							  (outputTokens . 244)
+							  (reasoningOutputTokens . 68)))))
 				      (with-current-buffer (find-file-noselect file-path)
 					(setq-local default-directory (file-name-as-directory project-dir))
 					(rename-buffer "focused-source-buffer" t)
@@ -5265,8 +5268,8 @@
 					(codex-ide--update-header-line session)
 					(should
 					 (equal
-					  (format-mode-line header-line-format)
-					  " Focus: focused-source-buffer | Model: gpt-5.4 (medium) | Quota: 15%/5h 3%/wk (prolite) | Context: 43.1k/258.4k (305.5k total)"))))))))
+						  (format-mode-line header-line-format)
+						  " Focus: focused-source-buffer | Model: gpt-5.4 (medium) | Quota: 15%/5h 3%/wk (prolite) | Context: 43.1k/258.4k (305.5k total)"))))))))
 
   (ert-deftest codex-ide-header-line-shows-compact-rate-limit-resets ()
     (let* ((project-dir (codex-ide-test--make-temp-project))
@@ -5279,8 +5282,8 @@
 				      (codex-ide--session-metadata-put
 				       session :rate-limits
 				       `((primary . ((usedPercent . 20)
-						     (windowDurationMins . 300)
-						     (resetsAt . ,today-reset)))
+						      (windowDurationMins . 300)
+						      (resetsAt . ,today-reset)))
 					 (secondary . ((usedPercent . 3)
 						       (windowDurationMins . 10080)
 						       (resetsAt . ,future-reset)))
@@ -5984,7 +5987,10 @@
 						     "Seeking approval..."))
 				      (should (string-match-p "Codex:Approval"
 							      (codex-ide-renderer-mode-line-status session)))
-				      (should (= (hash-table-count (codex-ide--pending-approvals session)) 1))
+				      (should (= (codex-ide-approvals-data-count
+						  session
+						  :status 'active)
+						 1))
 				      (with-current-buffer (codex-ide-session-buffer session)
 					(let ((text (buffer-string))
 					      (separator (string-trim-right
@@ -5996,18 +6002,18 @@
 							   "Run the following command\\?\n\n"
 							   "    git status\n\n"
 							   "Reason: inspect worktree\n"
-							   "\\[accept\\]\n"
-							   "\\[accept for session\\]\n"
-							   "\\[accept and allow prefix (git status)\\]\n"
-							   "\\[decline\\]\n"
-							   "\\[cancel turn\\]\n\n")
+							   "\\[1 - accept\\]\n"
+							   "\\[2 - accept for session\\]\n"
+							   "\\[3 - accept and allow prefix (git status)\\]\n"
+							   "\\[4 - decline\\]\n"
+							   "\\[5 - cancel turn\\]\n\n")
 						   text))
 					  (should (string-match-p "Reason: inspect worktree" text))
 					  (should-not (string-match-p "Codex approval required" text))
 					  (should-not (string-match-p "Proposed prefix:" text))
 					  (should-not (string-match-p "Status: Pending" text))
 					  (should-not (string-match-p "Choose:" text))
-					  (should (string-match-p "\\[accept for session\\]" text)))
+					  (should (string-match-p "\\[2 - accept for session\\]" text)))
 					(goto-char (point-min))
 					(search-forward (string-trim-right
 							 (codex-ide-renderer-output-separator-string)))
@@ -6023,7 +6029,7 @@
 					(should (eq (get-text-property (match-beginning 0) 'face)
 						    'codex-ide-item-summary-face))
 					(goto-char (point-min))
-					(search-forward "[accept for session]")
+					(search-forward "[2 - accept for session]")
 					(backward-char 1)
 					(push-button))
 				      (let* ((sent (codex-ide-test-process-sent-strings process))
@@ -6034,20 +6040,69 @@
 					(should (equal (alist-get 'id payload) 42))
 					(should (equal (alist-get 'decision (alist-get 'result payload))
 						       "acceptForSession")))
-				      (should (= (hash-table-count (codex-ide--pending-approvals session)) 0))
+				      (should-not (codex-ide-approvals-data-unresolved-p session))
 				      (should (string= (codex-ide-session-status session) "running"))
 				      (with-current-buffer (codex-ide-session-buffer session)
-					(should (string-match-p "\\[cancel turn\\]\n\nSelected: accept for session\n[^ \n]"
+					(should (string-match-p "\\[5 - cancel turn\\]\n\nSelected: accept for session\n[^ \n]"
 								(concat (buffer-string) "x")))
 					(goto-char (point-max))
 					(search-backward "Selected:")
 					(should (eq (get-text-property (point) 'face)
 						    'codex-ide-approval-label-face))
 					(goto-char (point-min))
-					(search-forward "[accept for session]")
+					(search-forward "[2 - accept for session]")
 					(backward-char 1)
 					(should-not (button-at (point))))
 				      (should (= (length (codex-ide-test-process-sent-strings process)) 1)))))))
+
+  (ert-deftest codex-ide-command-approval-minor-mode-dispatches-numbered-action-and-blocks-input ()
+    (let ((project-dir (codex-ide-test--make-temp-project))
+          (message-text nil))
+      (codex-ide-test-with-fixture project-dir
+				   (codex-ide-test-with-fake-processes
+				    (let* ((session (codex-ide--create-process-session))
+					   (process (codex-ide-session-process session)))
+				      (setf (codex-ide-session-current-turn-id session) "turn-approval-key"
+					    (codex-ide-session-status session) "running")
+				      (codex-ide--insert-input-prompt session "draft")
+				      (cl-letf (((symbol-function 'run-at-time)
+						 (lambda (_time _repeat function)
+						   (funcall function)))
+						((symbol-function 'codex-ide-display-buffer)
+						 (lambda (_buffer &optional _action) (selected-window)))
+						((symbol-function 'message)
+						 (lambda (format-string &rest args)
+						   (setq message-text
+							 (apply #'format format-string args)))))
+					(codex-ide--handle-command-approval
+					 session
+					 42
+					 '((command . "git status")
+					   (proposedExecpolicyAmendment . ["git" "status"]))))
+				      (with-current-buffer (codex-ide-session-buffer session)
+					(codex-ide-session-mode-sync-approval-minor-mode session)
+					(codex-ide--sync-prompt-minor-mode session)
+					(should codex-ide-session-approval-minor-mode)
+					(should-not codex-ide-session-prompt-minor-mode)
+					(should (eq (key-binding (kbd "2"))
+						    #'codex-ide-session-approval-dispatch))
+					(let ((last-command-event ?x))
+					  (call-interactively
+					   #'codex-ide-session-approval-blocked-input))
+					(should (equal message-text
+						       "Resolve or cancel the pending Codex approval first"))
+					(let ((last-command-event ?2))
+					  (call-interactively
+					   #'codex-ide-session-approval-dispatch))
+					(should-not codex-ide-session-approval-minor-mode))
+				      (let* ((sent (codex-ide-test-process-sent-strings process))
+					     (payload (json-parse-string (car sent)
+									 :object-type 'alist
+									 :array-type 'list)))
+					(should (= (length sent) 1))
+					(should (equal (alist-get 'id payload) 42))
+					(should (equal (alist-get 'decision (alist-get 'result payload))
+						       "acceptForSession"))))))))
 
   (ert-deftest codex-ide-command-approval-navigation-within-block-preserves-tail-follow ()
     (save-window-excursion
@@ -6109,8 +6164,9 @@
 					     (reason . "inspect worktree"))))
 					(setq approval-start
 					      (marker-position
-					       (plist-get (gethash 42 (codex-ide--pending-approvals session))
-							  :start-marker)))
+					       (codex-ide-approvals-data-view-get
+						(codex-ide-approvals-data-get session 42)
+						:start-marker)))
 					(set-window-buffer window buffer)
 					(with-selected-window window
 					  (goto-char (point-max))
@@ -6178,7 +6234,7 @@
 					 '((command . "git status"))))
 				      (with-current-buffer (codex-ide-session-buffer session)
 					(goto-char (point-min))
-					(search-forward "[accept]")
+					(search-forward "[1 - accept]")
 					(backward-char 1)
 					(push-button)
 					(codex-ide--replace-current-input session "steer while approved command runs")
@@ -6202,7 +6258,7 @@
 						    (codex-ide-session-input-prompt-start-marker session)))
 					(should (equal (codex-ide-test--prompt-prefix-at-line) "> ")))))))))
 
-(ert-deftest codex-ide-command-approval-resolving-one-keeps-other-buttons-active ()
+(ert-deftest codex-ide-command-approval-renders-queued-approvals-one-at-a-time ()
   (let ((project-dir (codex-ide-test--make-temp-project)))
     (codex-ide-test-with-fixture project-dir
 				 (codex-ide-test-with-fake-processes
@@ -6226,19 +6282,33 @@
 				       session
 				       43
 				       '((command . "pwd"))))
-				    (should (= (hash-table-count (codex-ide--pending-approvals session)) 2))
+				    (should (= (codex-ide-approvals-data-count session :status 'active) 1))
+				    (should (= (codex-ide-approvals-data-count session :status 'queued) 1))
+				    (should (equal (codex-ide-test--input-placeholder-text session)
+						   "Seeking approval (1 queued)..."))
 				    (with-current-buffer (codex-ide-session-buffer session)
 				      (goto-char (point-min))
 				      (search-forward "git status")
-				      (search-forward "[accept]")
+				      (search-forward "[1 - accept]")
 				      (backward-char 1)
 				      (push-button)
 				      (goto-char (point-min))
 				      (search-forward "pwd")
-				      (search-forward "[accept]")
+				      (search-forward "[1 - accept]")
 				      (backward-char 1)
-				      (should (button-at (point))))
-				    (should (= (hash-table-count (codex-ide--pending-approvals session)) 1))
+				      (should (button-at (point)))
+				      (should codex-ide-session-approval-minor-mode)
+				      (should (equal
+					       (mapcar
+						(lambda (action)
+						  (plist-get action :label))
+						(codex-ide-session-approval--actions session))
+					       '("accept"
+						 "accept for session"
+						 "decline"
+						 "cancel turn"))))
+				    (should (= (codex-ide-approvals-data-count session :status 'active) 1))
+				    (should (= (codex-ide-approvals-data-count session :status 'queued) 0))
 				    (should (string= (codex-ide-session-status session) "approval"))
 				    (let* ((sent (codex-ide-test-process-sent-strings process))
 					   (payloads (mapcar (lambda (text)
@@ -6253,7 +6323,7 @@
 				      (should (member 42 ids))
 				      (should-not (member 43 ids))))))))
 
-(ert-deftest codex-ide-thread-status-running-preserves-pending-approval-status ()
+(ert-deftest codex-ide-thread-status-running-preserves-unresolved-approval-status ()
   (let ((project-dir (codex-ide-test--make-temp-project)))
     (codex-ide-test-with-fixture project-dir
 				 (codex-ide-test-with-fake-processes
@@ -6277,7 +6347,7 @@
 				     session
 				     '((method . "thread/status/changed")
 				       (params . ((thread . ((status . "running")))))))
-				    (should (= (hash-table-count (codex-ide--pending-approvals session)) 1))
+				    (should (codex-ide-approvals-data-unresolved-p session))
 				    (should (string= (codex-ide-session-status session) "approval")))))))
 
 (ert-deftest codex-ide-command-approval-does-not-display-nonvisible-buffer-when-disabled ()
@@ -6305,7 +6375,7 @@
 				       44
 				       '((command . "sort"))))
 				    (should (string= (codex-ide-session-status session) "approval"))
-				    (should (= (hash-table-count (codex-ide--pending-approvals session)) 1))
+				    (should (codex-ide-approvals-data-unresolved-p session))
 				    (should (equal message-text
 						   (format "Codex approval required in %s"
 							   (buffer-name (codex-ide-session-buffer session)))))
@@ -6378,7 +6448,7 @@
 					  (should (< (string-match-p "Proposed changes:" text)
 						     (string-match-p "diff: foo\\.txt (\\+1/-1, 6 lines) \\[fold\\] \\[open diff\\]" text)))
 					  (should (< (string-match-p "\\[open diff\\]" text)
-						     (string-match-p "\\[accept\\]" text)))
+						     (string-match-p "\\[1 - accept\\]" text)))
 					  (should (string-match-p "diff --git a/foo\\.txt b/foo\\.txt" text))
 					  (should (string-match-p "-old" text))
 					  (should (string-match-p "+new" text)))
@@ -6401,9 +6471,27 @@
 						       (codex-ide-diff-buffer-name-for-session
 							(codex-ide-session-buffer session))))
 					(goto-char (point-min))
-					(search-forward "[accept]")
+					(search-forward "[1 - accept]")
 					(backward-char 1)
-					(button-activate (button-at (point)))))
+					(button-activate (button-at (point)))
+					(goto-char (point-min))
+					(search-forward "[fold]")
+					(backward-char 1)
+					(should (button-at (point)))
+					(search-forward "[open diff]")
+					(backward-char 1)
+					(should (button-at (point)))
+					(setq opened-diff nil
+					      opened-diff-buffer-name nil)
+					(button-activate (button-at (point)))
+					(should (equal opened-diff expected-diff))
+					(should (equal opened-diff-buffer-name
+						       (codex-ide-diff-buffer-name-for-session
+							(codex-ide-session-buffer session))))
+					(goto-char (point-min))
+					(search-forward "[1 - accept]")
+					(backward-char 1)
+					(should-not (button-at (point)))))
 				    (let* ((payloads
 					    (mapcar (lambda (json)
 						      (json-parse-string json
@@ -6861,16 +6949,16 @@
 					  (should (equal (buffer-name diff-buffer) diff-buffer-name))
 					  (with-current-buffer (codex-ide-session-buffer session)
 					    (let ((text (buffer-string)))
-					      (should (string-match-p "\\[accept\\]" text))
-					      (should (string-match-p "\\[accept for session\\]" text))
-					      (should (string-match-p "\\[decline\\]" text))
-					      (should (string-match-p "\\[cancel turn\\]" text))))
+					      (should (string-match-p "\\[1 - accept\\]" text))
+					      (should (string-match-p "\\[2 - accept for session\\]" text))
+					      (should (string-match-p "\\[3 - decline\\]" text))
+					      (should (string-match-p "\\[4 - cancel turn\\]" text))))
 					  (with-current-buffer diff-buffer
 					    (let ((text (buffer-string)))
-					      (should-not (string-match-p "\\[accept\\]" text))
-					      (should-not (string-match-p "\\[accept for session\\]" text))
-					      (should-not (string-match-p "\\[decline\\]" text))
-					      (should-not (string-match-p "\\[cancel turn\\]" text))
+					      (should-not (string-match-p "\\[1 - accept\\]" text))
+					      (should-not (string-match-p "\\[2 - accept for session\\]" text))
+					      (should-not (string-match-p "\\[3 - decline\\]" text))
+					      (should-not (string-match-p "\\[4 - cancel turn\\]" text))
 					      (should (string-match-p
 						       (regexp-quote "foo.txt +1 -1")
 						       text))
@@ -6930,7 +7018,7 @@
 					     (diff-pos (string-match-p
 							"diff: foo\\.txt"
 							text))
-					     (accept-pos (string-match-p "\\[accept\\]" text))
+					     (accept-pos (string-match-p "\\[1 - accept\\]" text))
 					     (prompt-pos (string-match-p
 							  "\n> "
 							  text
@@ -6941,10 +7029,10 @@
 					(should (< diff-pos accept-pos))
 					(should (< accept-pos prompt-pos)))
 				      (goto-char (point-min))
-				      (search-forward "[accept]")
+				      (search-forward "[1 - accept]")
 				      (should-not (eq (get-char-property (match-beginning 0) 'field)
 						      'codex-ide-active-input))
-				      (search-forward "[cancel turn]")
+				      (search-forward "[4 - cancel turn]")
 				      (should-not (eq (get-char-property (match-beginning 0) 'field)
 						      'codex-ide-active-input))
 				      (search-forward "> ")
@@ -6968,7 +7056,7 @@
 				     session
 				     "nested-command"
 				     '(:type "commandExecution"
-					     :item-result-label "command output"))
+				       :item-result-label "command output"))
 				    (with-current-buffer (codex-ide-session-buffer session)
 				      (let ((inhibit-read-only t)
 					    (boundary (codex-ide--active-input-boundary-marker
@@ -6976,12 +7064,12 @@
 					(goto-char boundary)
 					(codex-ide-renderer-insert-read-only "Parent block\n")
 					(codex-ide--with-local-transcript-insertion
-					 (setq render-context
-					       codex-ide--transcript-render-context)
-					 (codex-ide--ensure-item-result-block
-					  session
-					  "nested-command")
-					 (codex-ide-renderer-insert-read-only "[after]\n")))
+					  (setq render-context
+						codex-ide--transcript-render-context)
+					  (codex-ide--ensure-item-result-block
+					   session
+					   "nested-command")
+					  (codex-ide-renderer-insert-read-only "[after]\n")))
 				      (should (codex-ide-transcript-render-context-p
 					       render-context))
 				      (should
@@ -7186,7 +7274,7 @@
 				      (should (string-match-p "\\[Approval required\\]\n\nReason: run a tool"
 							      (buffer-string)))
 				      (goto-char (point-min))
-				      (search-forward "[decline]")
+				      (search-forward "[3 - decline]")
 				      (backward-char 1)
 				      (push-button))
 				    (let* ((payloads

@@ -60,6 +60,8 @@
 (declare-function codex-ide--show-session-buffer "codex-ide-session"
                   (session &key newly-created select))
 (declare-function codex-ide--sync-prompt-minor-mode "codex-ide-session-mode" (&optional session))
+(declare-function codex-ide-session-mode-sync-approval-minor-mode
+                  "codex-ide-session-mode" (&optional session))
 (declare-function codex-ide-config-effective-value "codex-ide-config" (key &optional session))
 (declare-function codex-ide-config-effective-reasoning-effort "codex-ide-config" (&optional session))
 (declare-function codex-ide-log-message "codex-ide-log" (session format-string &rest args))
@@ -228,15 +230,15 @@ point in that buffer."
               (cons ,context-var
                     codex-ide--transcript-render-transaction-stack)))
          (codex-ide--with-transcript-render-context ,context-var
-						    (unwind-protect
-							(progn ,@body)
-						      (when (buffer-live-p ,buffer-var)
-							(with-current-buffer ,buffer-var
-							  (codex-ide--transcript-render-context-note-point
-							   ,context-var)))
-						      (codex-ide--finish-transcript-render-transaction
-						       ,context-var
-						       (cdr codex-ide--transcript-render-transaction-stack))))))))
+           (unwind-protect
+               (progn ,@body)
+             (when (buffer-live-p ,buffer-var)
+               (with-current-buffer ,buffer-var
+                 (codex-ide--transcript-render-context-note-point
+                  ,context-var)))
+             (codex-ide--finish-transcript-render-transaction
+              ,context-var
+              (cdr codex-ide--transcript-render-transaction-stack))))))))
 
 (cl-defmacro codex-ide--with-transcript-render-transaction-at
     ((session buffer position &key local) &body body)
@@ -265,11 +267,11 @@ record the resulting end position with
               (cons ,context-var
                     codex-ide--transcript-render-transaction-stack)))
          (codex-ide--with-transcript-render-context ,context-var
-						    (unwind-protect
-							(progn ,@body)
-						      (codex-ide--finish-transcript-render-transaction
-						       ,context-var
-						       (cdr codex-ide--transcript-render-transaction-stack))))))))
+           (unwind-protect
+               (progn ,@body)
+             (codex-ide--finish-transcript-render-transaction
+              ,context-var
+              (cdr codex-ide--transcript-render-transaction-stack))))))))
 
 (defmacro codex-ide--with-local-transcript-insertion (&rest body)
   "Run BODY while nested transcript renderers honor current point."
@@ -284,13 +286,13 @@ record the resulting end position with
               (cons ,context-var
                     codex-ide--transcript-render-transaction-stack)))
          (codex-ide--with-transcript-render-context ,context-var
-						    (unwind-protect
-							(progn ,@body)
-						      (codex-ide--transcript-render-context-note-point
-						       ,context-var)
-						      (codex-ide--finish-transcript-render-transaction
-						       ,context-var
-						       (cdr codex-ide--transcript-render-transaction-stack))))))))
+           (unwind-protect
+               (progn ,@body)
+             (codex-ide--transcript-render-context-note-point
+              ,context-var)
+             (codex-ide--finish-transcript-render-transaction
+              ,context-var
+              (cdr codex-ide--transcript-render-transaction-stack))))))))
 
 (defun codex-ide--local-transcript-insertion-p ()
   "Return non-nil when a parent renderer owns transcript insertion."
@@ -858,26 +860,26 @@ inserted text."
               (and active-boundary
                    (= insertion-position (marker-position active-boundary)))))
         (codex-ide--with-transcript-render-transaction-at
-         (session buffer insertion-position)
-         (codex-ide--maybe-save-transcript-position
-          insertion-position
-          (codex-ide-renderer-append-to-buffer
-           text
-           :insertion-point insertion-position
-           :face face
-           :properties properties
-           :restore-point restore-point
-           :preserve-point t
-           :move-point-to-end moving
-           :after-insert
-           (lambda (_start end inserted-at)
-             (codex-ide--finish-transcript-append
-              buffer
-              inserted-at
-              end
-              active-boundary
-              advance-active-boundary
-              session)))))))))
+            (session buffer insertion-position)
+          (codex-ide--maybe-save-transcript-position
+              insertion-position
+            (codex-ide-renderer-append-to-buffer
+             text
+             :insertion-point insertion-position
+             :face face
+             :properties properties
+             :restore-point restore-point
+             :preserve-point t
+             :move-point-to-end moving
+             :after-insert
+             (lambda (_start end inserted-at)
+               (codex-ide--finish-transcript-append
+                buffer
+                inserted-at
+                end
+                active-boundary
+                advance-active-boundary
+                session)))))))))
 
 (defun codex-ide--append-status-block-to-buffer (buffer heading details)
   "Append a status block with HEADING and DETAILS to BUFFER."
@@ -891,30 +893,30 @@ inserted text."
               (and active-boundary
                    (= insertion-position (marker-position active-boundary)))))
         (codex-ide--with-transcript-render-transaction-at
-         (session buffer insertion-position)
-         (codex-ide--maybe-save-transcript-position
-          insertion-position
-          (codex-ide-renderer-append-to-buffer
-           ""
-           :insertion-point insertion-position
-           :restore-point restore-point
-           :preserve-point t
-           :after-insert
-           (lambda (_start _end inserted-at)
-             (goto-char inserted-at)
-             (let (block-range)
-               (codex-ide-renderer-insert-output-spacing)
-               (setq block-range
-                     (codex-ide-renderer-insert-status-block
-                      heading
-                      details))
-               (codex-ide--finish-transcript-append
-                buffer
-                inserted-at
-                (cdr block-range)
-                active-boundary
-                advance-active-boundary
-                session))))))))))
+            (session buffer insertion-position)
+          (codex-ide--maybe-save-transcript-position
+              insertion-position
+            (codex-ide-renderer-append-to-buffer
+             ""
+             :insertion-point insertion-position
+             :restore-point restore-point
+             :preserve-point t
+             :after-insert
+             (lambda (_start _end inserted-at)
+               (goto-char inserted-at)
+               (let (block-range)
+                 (codex-ide-renderer-insert-output-spacing)
+                 (setq block-range
+                       (codex-ide-renderer-insert-status-block
+                        heading
+                        details))
+                 (codex-ide--finish-transcript-append
+                  buffer
+                  inserted-at
+                  (cdr block-range)
+                  active-boundary
+                  advance-active-boundary
+                  session))))))))))
 
 (defun codex-ide--append-metadata-line-to-buffer (buffer text &optional face)
   "Append a muted metadata line with TEXT to BUFFER.
@@ -929,34 +931,34 @@ When FACE is non-nil, use it for the inserted line."
               (and active-boundary
                    (= insertion-position (marker-position active-boundary)))))
         (codex-ide--with-transcript-render-transaction-at
-         (session buffer insertion-position)
-         (codex-ide--maybe-save-transcript-position
-          insertion-position
-          (codex-ide-renderer-append-to-buffer
-           ""
-           :insertion-point insertion-position
-           :restore-point restore-point
-           :preserve-point t
-           :after-insert
-           (lambda (_start _end inserted-at)
-             (goto-char inserted-at)
-             (let (line-range)
-               (codex-ide-renderer-insert-output-spacing)
-               (setq line-range
-                     (codex-ide-renderer-insert-metadata-line text face))
-               (when (and advance-active-boundary
-                          (eq (char-after (cdr line-range)) ?\n)
-                          (eq (char-after (1+ (cdr line-range))) ?\n))
-                 (goto-char (cdr line-range))
-                 (let ((inhibit-read-only t))
-                   (delete-char 1))
-                 (setcdr line-range (point)))
-               (codex-ide--finish-transcript-append
-                buffer
-                inserted-at
-                (cdr line-range)
-                active-boundary
-                advance-active-boundary))))))))))
+            (session buffer insertion-position)
+          (codex-ide--maybe-save-transcript-position
+              insertion-position
+            (codex-ide-renderer-append-to-buffer
+             ""
+             :insertion-point insertion-position
+             :restore-point restore-point
+             :preserve-point t
+             :after-insert
+             (lambda (_start _end inserted-at)
+               (goto-char inserted-at)
+               (let (line-range)
+                 (codex-ide-renderer-insert-output-spacing)
+                 (setq line-range
+                       (codex-ide-renderer-insert-metadata-line text face))
+                 (when (and advance-active-boundary
+                            (eq (char-after (cdr line-range)) ?\n)
+                            (eq (char-after (1+ (cdr line-range))) ?\n))
+                   (goto-char (cdr line-range))
+                   (let ((inhibit-read-only t))
+                     (delete-char 1))
+                   (setcdr line-range (point)))
+                 (codex-ide--finish-transcript-append
+                  buffer
+                  inserted-at
+                  (cdr line-range)
+                  active-boundary
+                  advance-active-boundary))))))))))
 
 (defun codex-ide--append-agent-text (buffer text &optional face properties)
   "Append agent-originated TEXT to BUFFER with FACE and PROPERTIES."
@@ -981,26 +983,26 @@ Move MARKER after the inserted text."
              (moving (and (= (point) (point-max)) (not restore-point)))
              (insertion-position (marker-position marker)))
         (codex-ide--with-transcript-render-transaction-at
-         (session buffer insertion-position)
-         (codex-ide--maybe-save-transcript-position
-          insertion-position
-          (codex-ide-renderer-append-to-buffer
-           text
-           :insertion-point insertion-position
-           :face face
-           :properties (append properties
-                               (codex-ide--current-agent-text-properties))
-           :restore-point restore-point
-           :preserve-point t
-           :move-point-to-end moving
-           :after-insert
-           (lambda (_start end _inserted-at)
-             (set-marker marker end)
-             (codex-ide--advance-active-boundary-after buffer marker)
-             (when session
-               (codex-ide--ensure-active-input-prompt-spacing session))
-             (codex-ide--transcript-render-context-note-position
-              (marker-position marker))))))))))
+            (session buffer insertion-position)
+          (codex-ide--maybe-save-transcript-position
+              insertion-position
+            (codex-ide-renderer-append-to-buffer
+             text
+             :insertion-point insertion-position
+             :face face
+             :properties (append properties
+                                 (codex-ide--current-agent-text-properties))
+             :restore-point restore-point
+             :preserve-point t
+             :move-point-to-end moving
+             :after-insert
+             (lambda (_start end _inserted-at)
+               (set-marker marker end)
+               (codex-ide--advance-active-boundary-after buffer marker)
+               (when session
+                 (codex-ide--ensure-active-input-prompt-spacing session))
+               (codex-ide--transcript-render-context-note-position
+                (marker-position marker))))))))))
 
 (defun codex-ide--ensure-output-spacing (buffer)
   "Ensure BUFFER is ready for a new rendered output block."
@@ -1014,24 +1016,24 @@ Move MARKER after the inserted text."
               (and active-boundary
                    (= insertion-position (marker-position active-boundary)))))
         (codex-ide--with-transcript-render-transaction-at
-         (session buffer insertion-position)
-         (codex-ide--maybe-save-transcript-position
-          insertion-position
-          (codex-ide-renderer-append-to-buffer
-           ""
-           :insertion-point insertion-position
-           :restore-point restore-point
-           :preserve-point t
-           :after-insert
-           (lambda (_start _end inserted-at)
-             (goto-char inserted-at)
-             (let ((range (codex-ide-renderer-insert-output-spacing)))
-               (codex-ide--finish-transcript-append
-                buffer
-                inserted-at
-                (cdr range)
-                active-boundary
-                advance-active-boundary))))))))))
+            (session buffer insertion-position)
+          (codex-ide--maybe-save-transcript-position
+              insertion-position
+            (codex-ide-renderer-append-to-buffer
+             ""
+             :insertion-point insertion-position
+             :restore-point restore-point
+             :preserve-point t
+             :after-insert
+             (lambda (_start _end inserted-at)
+               (goto-char inserted-at)
+               (let ((range (codex-ide-renderer-insert-output-spacing)))
+                 (codex-ide--finish-transcript-append
+                  buffer
+                  inserted-at
+                  (cdr range)
+                  active-boundary
+                  advance-active-boundary))))))))))
 
 (defun codex-ide--append-output-separator (buffer)
   "Append a transcript separator rule to BUFFER."
@@ -1120,12 +1122,16 @@ Move MARKER after the inserted text."
     (if (and session
              (or (codex-ide-session-current-turn-id session)
                  (codex-ide-session-output-prefix-inserted session)))
-        (or (alist-get (downcase (or (codex-ide-session-status session) ""))
-                       codex-ide-status-placeholder-text-alist
-                       nil
-                       nil
-                       #'string=)
-            codex-ide-steering-placeholder-text)
+        (let* ((status (downcase (or (codex-ide-session-status session) "")))
+               (text (or (alist-get status
+                                    codex-ide-status-placeholder-text-alist
+                                    nil
+                                    nil
+                                    #'string=)
+                         codex-ide-steering-placeholder-text)))
+          (if (string= status "approval")
+              (codex-ide--approval-placeholder-text session text)
+            text))
       codex-ide-prompt-placeholder-text)))
 
 (defconst codex-ide--input-placeholder-ellipsis-frames
@@ -1347,20 +1353,20 @@ Move MARKER after the inserted text."
 (defun codex-ide--delete-active-input-prompt (session)
   "Delete SESSION's active editable input prompt, if any."
   (cl-labels ((clear-state
-		()
-		(codex-ide--delete-input-overlay session)
-		(codex-ide--session-metadata-put
-                 session
-                 :active-input-boundary-marker
-                 nil)
-		(codex-ide--session-metadata-put session :input-end-marker nil)
-		(codex-ide--session-metadata-put
-                 session
-                 :input-display-start-marker
-                 nil)
-		(setf (codex-ide-session-input-start-marker session) nil
-                      (codex-ide-session-input-prompt-start-marker session) nil)
-		(codex-ide--sync-prompt-minor-mode session)))
+               ()
+               (codex-ide--delete-input-overlay session)
+               (codex-ide--session-metadata-put
+                session
+                :active-input-boundary-marker
+                nil)
+               (codex-ide--session-metadata-put session :input-end-marker nil)
+               (codex-ide--session-metadata-put
+                session
+                :input-display-start-marker
+                nil)
+               (setf (codex-ide-session-input-start-marker session) nil
+                     (codex-ide-session-input-prompt-start-marker session) nil)
+               (codex-ide--sync-prompt-minor-mode session)))
     (let* ((buffer (codex-ide-session-buffer session))
            (start (or (codex-ide--session-metadata-get
                        session
@@ -1382,10 +1388,10 @@ Move MARKER after the inserted text."
                    (delete-start (marker-position start)))
                (goto-char delete-start)
                (codex-ide--with-transcript-render-transaction (session buffer)
-							      (delete-region delete-start (point-max))
-							      (when moving
-								(goto-char (point-max)))
-							      (clear-state)))))
+                 (delete-region delete-start (point-max))
+                 (when moving
+                   (goto-char (point-max)))
+                 (clear-state)))))
         (clear-state)))))
 
 (defun codex-ide--delete-running-input-list (session)
@@ -1412,10 +1418,10 @@ Move MARKER after the inserted text."
          (let ((inhibit-read-only t)
                (moving (= (point) (point-max))))
            (codex-ide--with-transcript-render-transaction-at
-            (session buffer (marker-position boundary))
-            (delete-region (marker-position boundary) (marker-position end))
-            (when moving
-              (goto-char (point-max))))))))
+               (session buffer (marker-position boundary))
+             (delete-region (marker-position boundary) (marker-position end))
+             (when moving
+               (goto-char (point-max))))))))
     (when (markerp start)
       (set-marker start nil))
     (when (markerp boundary)
@@ -1491,23 +1497,23 @@ Move MARKER after the inserted text."
                  render-state)
              (goto-char (point-max))
              (codex-ide--with-transcript-render-transaction (session buffer)
-							    (setq render-state
-								  (codex-ide-renderer-insert-running-input-list text))
-							    (codex-ide--freeze-region
-							     (marker-position (plist-get render-state :delete-start))
-							     (marker-position (plist-get render-state :end)))
-							    (codex-ide--session-metadata-put
-							     session
-							     :running-input-list-delete-start-marker
-							     (plist-get render-state :delete-start))
-							    (codex-ide--session-metadata-put
-							     session
-							     :running-input-list-boundary-marker
-							     (plist-get render-state :boundary))
-							    (codex-ide--session-metadata-put
-							     session
-							     :running-input-list-end-marker
-							     (plist-get render-state :end))))))))))
+               (setq render-state
+                     (codex-ide-renderer-insert-running-input-list text))
+               (codex-ide--freeze-region
+                (marker-position (plist-get render-state :delete-start))
+                (marker-position (plist-get render-state :end)))
+               (codex-ide--session-metadata-put
+                session
+                :running-input-list-delete-start-marker
+                (plist-get render-state :delete-start))
+               (codex-ide--session-metadata-put
+                session
+                :running-input-list-boundary-marker
+                (plist-get render-state :boundary))
+               (codex-ide--session-metadata-put
+                session
+                :running-input-list-end-marker
+                (plist-get render-state :end))))))))))
 
 (defun codex-ide--refresh-running-input-display (&optional session draft)
   "Refresh SESSION's running steer/queue list and editable prompt.
@@ -1544,18 +1550,18 @@ When DRAFT is nil, preserve the current active prompt text."
         (session (codex-ide--session-for-buffer (current-buffer))))
     (cl-labels
         ((render-region
-           ()
-           (let* ((active-boundary
-                   (codex-ide--active-input-boundary-marker buffer))
-                  (active-boundary-at-end
-                   (and active-boundary
-			(= (marker-position active-boundary) end)))
-                  (render-end-marker
-                   (and active-boundary-at-end
-			(copy-marker end t))))
-             (unwind-protect
-                 (codex-ide--maybe-save-transcript-position
-                  end
+          ()
+          (let* ((active-boundary
+                  (codex-ide--active-input-boundary-marker buffer))
+                 (active-boundary-at-end
+                  (and active-boundary
+                       (= (marker-position active-boundary) end)))
+                 (render-end-marker
+                  (and active-boundary-at-end
+                       (copy-marker end t))))
+            (unwind-protect
+                (codex-ide--maybe-save-transcript-position
+                    end
                   (prog1
                       (let ((codex-ide-renderer--markdown-table-max-width-override
                              (codex-ide-renderer-markdown-table-max-width-for-buffer
@@ -1567,12 +1573,12 @@ When DRAFT is nil, preserve the current active prompt text."
                     (when render-end-marker
                       (set-marker active-boundary
                                   (marker-position render-end-marker)))))
-               (when render-end-marker
-                 (set-marker render-end-marker nil))))))
+              (when render-end-marker
+                (set-marker render-end-marker nil))))))
       (if session
           (codex-ide--with-transcript-render-transaction-at
-           (session buffer start)
-           (render-region))
+              (session buffer start)
+            (render-region))
         (render-region)))))
 
 (defun codex-ide--render-current-agent-message-markdown-streaming
@@ -1604,22 +1610,22 @@ When DRAFT is nil, preserve the current active prompt text."
                            (= (marker-position active-boundary) message-end)
                            (copy-marker message-end t))))
                 (codex-ide--with-transcript-render-transaction-at
-                 (session buffer (marker-position render-start-marker))
-                 (unwind-protect
-                     (let ((codex-ide-renderer--markdown-table-max-width-override
-                            (codex-ide-renderer-markdown-table-max-width-for-buffer
-                             buffer)))
-                       (prog1
-                           (codex-ide-renderer-render-markdown-streaming
-                            (marker-position message-start)
-                            message-end
-                            render-start-marker)
-                         (codex-ide--transcript-render-context-note-position
-                          (codex-ide--agent-message-render-end buffer))))
-                   (when render-end-marker
-                     (set-marker active-boundary
-                                 (marker-position render-end-marker))
-                     (set-marker render-end-marker nil))))))))))))
+                    (session buffer (marker-position render-start-marker))
+                  (unwind-protect
+                      (let ((codex-ide-renderer--markdown-table-max-width-override
+                             (codex-ide-renderer-markdown-table-max-width-for-buffer
+                              buffer)))
+                        (prog1
+                            (codex-ide-renderer-render-markdown-streaming
+                             (marker-position message-start)
+                             message-end
+                             render-start-marker)
+                          (codex-ide--transcript-render-context-note-position
+                           (codex-ide--agent-message-render-end buffer))))
+                    (when render-end-marker
+                      (set-marker active-boundary
+                                  (marker-position render-end-marker))
+                      (set-marker render-end-marker nil))))))))))))
 
 (defun codex-ide--insert-input-prompt (&optional session initial-text)
   "Insert a writable `>' prompt for SESSION.
@@ -1637,65 +1643,65 @@ Optionally seed it with INITIAL-TEXT."
                display-start)
            (goto-char (point-max))
            (codex-ide--with-transcript-render-transaction (session buffer)
-							  (setq render-state
-								(codex-ide-renderer-insert-input-prompt
-								 initial-text
-								 (or (codex-ide-session-current-turn-id session)
-								     (codex-ide-session-output-prefix-inserted session))))
-							  (setq display-start
-								(copy-marker
-								 (marker-position
-								  (plist-get render-state :prompt-start))))
-							  (goto-char (plist-get render-state :prompt-start))
-							  (codex-ide-renderer-insert-user-prompt-top-padding)
-							  (set-marker (plist-get render-state :prompt-start) (point))
-							  (codex-ide--session-metadata-put
-							   session
-							   :input-display-start-marker
-							   display-start)
-							  (goto-char (point-max))
-							  (codex-ide--freeze-region
-							   (marker-position (plist-get render-state :transcript-start))
-							   (marker-position (codex-ide--session-metadata-get
-									     session
-									     :input-display-start-marker)))
-							  (codex-ide--delete-input-overlay session)
-							  (codex-ide--session-metadata-put
-							   session
-							   :active-input-boundary-marker
-							   (or (plist-get render-state :active-boundary)
-							       display-start))
-							  (setf (codex-ide-session-input-prompt-start-marker session)
-								(plist-get render-state :prompt-start))
-							  (setf (codex-ide-session-input-start-marker session)
-								(plist-get render-state :input-start))
-							  (let ((input-end-pos (point)))
-							    (codex-ide-renderer-insert-user-prompt-bottom-padding)
-							    (codex-ide--session-metadata-put
-							     session
-							     :input-end-marker
-							     (copy-marker input-end-pos t))
-							    (goto-char input-end-pos))
-							  (codex-ide--reset-prompt-history-navigation session)
-							  (codex-ide--make-region-writable
-							   (marker-position (codex-ide-session-input-start-marker session))
-							   (codex-ide--input-end-position session))
-							  (let ((overlay (make-overlay
-									  (marker-position
-									   (codex-ide-session-input-start-marker session))
-									  (point-max)
-									  buffer
-									  nil
-									  t)))
-							    (overlay-put overlay 'face 'codex-ide-user-prompt-face)
-							    (overlay-put overlay 'field 'codex-ide-active-input)
-							    (overlay-put overlay 'read-only nil)
-							    (setf (codex-ide-session-input-overlay session) overlay))
-							  (codex-ide--setup-input-placeholder-hooks)
-							  (codex-ide--refresh-input-placeholder session)
-							  (when moving
-							    (goto-char (codex-ide--input-end-position session)))
-							  (codex-ide--sync-prompt-minor-mode session))))
+             (setq render-state
+                   (codex-ide-renderer-insert-input-prompt
+                    initial-text
+                    (or (codex-ide-session-current-turn-id session)
+                        (codex-ide-session-output-prefix-inserted session))))
+             (setq display-start
+                   (copy-marker
+                    (marker-position
+                     (plist-get render-state :prompt-start))))
+             (goto-char (plist-get render-state :prompt-start))
+             (codex-ide-renderer-insert-user-prompt-top-padding)
+             (set-marker (plist-get render-state :prompt-start) (point))
+             (codex-ide--session-metadata-put
+              session
+              :input-display-start-marker
+              display-start)
+             (goto-char (point-max))
+             (codex-ide--freeze-region
+              (marker-position (plist-get render-state :transcript-start))
+              (marker-position (codex-ide--session-metadata-get
+                                session
+                                :input-display-start-marker)))
+             (codex-ide--delete-input-overlay session)
+             (codex-ide--session-metadata-put
+              session
+              :active-input-boundary-marker
+              (or (plist-get render-state :active-boundary)
+                  display-start))
+             (setf (codex-ide-session-input-prompt-start-marker session)
+                   (plist-get render-state :prompt-start))
+             (setf (codex-ide-session-input-start-marker session)
+                   (plist-get render-state :input-start))
+             (let ((input-end-pos (point)))
+               (codex-ide-renderer-insert-user-prompt-bottom-padding)
+               (codex-ide--session-metadata-put
+                session
+                :input-end-marker
+                (copy-marker input-end-pos t))
+               (goto-char input-end-pos))
+             (codex-ide--reset-prompt-history-navigation session)
+             (codex-ide--make-region-writable
+              (marker-position (codex-ide-session-input-start-marker session))
+              (codex-ide--input-end-position session))
+             (let ((overlay (make-overlay
+                             (marker-position
+                              (codex-ide-session-input-start-marker session))
+                             (point-max)
+                             buffer
+                             nil
+                             t)))
+               (overlay-put overlay 'face 'codex-ide-user-prompt-face)
+               (overlay-put overlay 'field 'codex-ide-active-input)
+               (overlay-put overlay 'read-only nil)
+               (setf (codex-ide-session-input-overlay session) overlay))
+             (codex-ide--setup-input-placeholder-hooks)
+             (codex-ide--refresh-input-placeholder session)
+             (when moving
+               (goto-char (codex-ide--input-end-position session)))
+             (codex-ide--sync-prompt-minor-mode session))))
         (codex-ide--discard-buffer-undo-history)))))
 
 (defun codex-ide--insert-context-summary (text &optional prompt-kind)
@@ -1739,70 +1745,70 @@ When PROMPT-KIND is `steering', render it as nested steering input."
               steering-body-start
               steering-prompt-start)
          (codex-ide--with-transcript-render-transaction-at
-          (session buffer transaction-position)
-          (codex-ide--delete-running-input-list session)
-          (when-let* ((start (codex-ide-session-input-prompt-start-marker
-                              session)))
-            (let ((display-start (or (codex-ide--session-metadata-get
-                                      session
-                                      :input-display-start-marker)
-                                     start))
-                  (input-start (codex-ide-session-input-start-marker session)))
-              (if (eq prompt-kind 'steering)
-                  (progn
-                    (codex-ide--style-steering-prompt-region
-                     display-start
-                     (point-max))
-                    (when (markerp input-start)
-                      (let* ((prompt-start-pos (marker-position start))
-                             (input-start-pos (marker-position input-start))
-                             (input-end-pos
-                              (codex-ide--input-end-position session))
-                             (body-start
-                              (codex-ide-renderer-replace-prompt-with-steering
-                               prompt-start-pos
-                               input-start-pos
-                               input-end-pos)))
-                        (setq steering-body-start body-start
-                              steering-prompt-start prompt-start-pos)
-                        (set-marker input-start body-start)
-                        (codex-ide-renderer-style-steering-prompt-display
-                         prompt-start-pos
-                         body-start
-                         (codex-ide--input-end-position session)))))
-                (codex-ide--style-user-prompt-region start (point-max)))
-              (codex-ide--freeze-region display-start (point-max))
-              (when (and steering-prompt-start steering-body-start)
-                (codex-ide-renderer-style-steering-prompt-display
-                 steering-prompt-start
-                 steering-body-start
-                 (codex-ide--input-end-position session))))
-            (when context-summary
-              (goto-char (point-max))
-              (let ((range (codex-ide--insert-context-summary
-                            context-summary
-                            prompt-kind)))
-                (setq context-start (car range))
-                (codex-ide--freeze-region context-start (cdr range))))
-            (when (and steering-prompt-start steering-body-start)
-              (codex-ide-renderer-style-steering-prompt-display
-               steering-prompt-start
-               steering-body-start
-               (codex-ide--input-end-position session)))))
-         (codex-ide--delete-input-overlay session)
-         (codex-ide--session-metadata-put
-          session
-          :active-input-boundary-marker
-          nil)
-         (codex-ide--session-metadata-put
-          session
-          :input-display-start-marker
-          nil)
-         (codex-ide--session-metadata-put session :input-end-marker nil)
-         (codex-ide--sync-prompt-minor-mode session)
-         (codex-ide--transcript-render-context-note-position
-          (point-max)))))
-    (codex-ide--discard-buffer-undo-history)))
+             (session buffer transaction-position)
+           (codex-ide--delete-running-input-list session)
+           (when-let* ((start (codex-ide-session-input-prompt-start-marker
+                               session)))
+             (let ((display-start (or (codex-ide--session-metadata-get
+                                       session
+                                       :input-display-start-marker)
+                                      start))
+                   (input-start (codex-ide-session-input-start-marker session)))
+               (if (eq prompt-kind 'steering)
+                   (progn
+                     (codex-ide--style-steering-prompt-region
+                      display-start
+                      (point-max))
+                     (when (markerp input-start)
+                       (let* ((prompt-start-pos (marker-position start))
+                              (input-start-pos (marker-position input-start))
+                              (input-end-pos
+                               (codex-ide--input-end-position session))
+                              (body-start
+                               (codex-ide-renderer-replace-prompt-with-steering
+                                prompt-start-pos
+                                input-start-pos
+                                input-end-pos)))
+                         (setq steering-body-start body-start
+                               steering-prompt-start prompt-start-pos)
+                         (set-marker input-start body-start)
+                         (codex-ide-renderer-style-steering-prompt-display
+                          prompt-start-pos
+                          body-start
+                          (codex-ide--input-end-position session)))))
+                 (codex-ide--style-user-prompt-region start (point-max)))
+               (codex-ide--freeze-region display-start (point-max))
+               (when (and steering-prompt-start steering-body-start)
+                 (codex-ide-renderer-style-steering-prompt-display
+                  steering-prompt-start
+                  steering-body-start
+                  (codex-ide--input-end-position session))))
+             (when context-summary
+               (goto-char (point-max))
+               (let ((range (codex-ide--insert-context-summary
+                             context-summary
+                             prompt-kind)))
+                 (setq context-start (car range))
+                 (codex-ide--freeze-region context-start (cdr range))))
+             (when (and steering-prompt-start steering-body-start)
+               (codex-ide-renderer-style-steering-prompt-display
+                steering-prompt-start
+                steering-body-start
+                (codex-ide--input-end-position session)))))
+           (codex-ide--delete-input-overlay session)
+           (codex-ide--session-metadata-put
+            session
+            :active-input-boundary-marker
+            nil)
+           (codex-ide--session-metadata-put
+            session
+            :input-display-start-marker
+            nil)
+           (codex-ide--session-metadata-put session :input-end-marker nil)
+           (codex-ide--sync-prompt-minor-mode session)
+           (codex-ide--transcript-render-context-note-position
+            (point-max)))))
+      (codex-ide--discard-buffer-undo-history)))
 
 (defun codex-ide--input-prompt-active-p (&optional session)
   "Return non-nil when SESSION currently has an editable input prompt."
@@ -1852,16 +1858,16 @@ When INITIAL-TEXT is non-nil, seed a newly inserted prompt with it."
     (with-current-buffer buffer
       (let ((inhibit-read-only t))
         (codex-ide--with-transcript-render-transaction-at
-         (session buffer (marker-position marker) :local t)
-         (goto-char marker)
-         (codex-ide-renderer-replace-region
-          marker
-          (codex-ide--input-end-position session)
-          text)
-         (goto-char (codex-ide--input-end-position session))
-         (codex-ide--refresh-input-placeholder session)
-         (codex-ide--transcript-render-context-note-position
-          (codex-ide--input-end-position session)))))))
+            (session buffer (marker-position marker) :local t)
+          (goto-char marker)
+          (codex-ide-renderer-replace-region
+           marker
+           (codex-ide--input-end-position session)
+           text)
+          (goto-char (codex-ide--input-end-position session))
+          (codex-ide--refresh-input-placeholder session)
+          (codex-ide--transcript-render-context-note-position
+           (codex-ide--input-end-position session)))))))
 
 (defun codex-ide--browse-prompt-history (direction)
   "Browse prompt history in DIRECTION for the current Codex session.
@@ -2027,31 +2033,31 @@ When QUIET is non-nil, do not refresh SESSION's header line."
                      (point-max)))
                 context-start)
            (codex-ide--with-transcript-render-transaction-at
-            (session buffer transaction-position)
-            (codex-ide--delete-running-input-list session)
-            (when-let* ((start (codex-ide-session-input-prompt-start-marker session)))
-              (codex-ide--style-user-prompt-region start (point-max))
-              (codex-ide--freeze-region start (point-max))
-              (when context-summary
-                (setq context-start (point-max))
-                (goto-char context-start)
-                (codex-ide--insert-context-summary context-summary)
-                (codex-ide--freeze-region context-start (point))))
-            (codex-ide--delete-input-overlay session)
-            (codex-ide--sync-prompt-minor-mode session)
-            (when-let* ((start (codex-ide-session-input-prompt-start-marker session)))
-              (if-let* ((turn-id (codex-ide-session-current-turn-id session)))
-                  (codex-ide--record-turn-start session turn-id start)
-                (codex-ide--set-pending-turn-start-marker
-                 session
-                 (copy-marker start nil))))
-            (codex-ide--insert-pending-output-indicator session)
-            (setf (codex-ide-session-output-prefix-inserted session) t
-                  (codex-ide-session-status session) "running")
-            (goto-char (point-max))
-            (codex-ide--insert-input-prompt session)
-            (unless quiet
-              (codex-ide--update-header-line session)))))
+               (session buffer transaction-position)
+             (codex-ide--delete-running-input-list session)
+             (when-let* ((start (codex-ide-session-input-prompt-start-marker session)))
+               (codex-ide--style-user-prompt-region start (point-max))
+               (codex-ide--freeze-region start (point-max))
+               (when context-summary
+                 (setq context-start (point-max))
+                 (goto-char context-start)
+                 (codex-ide--insert-context-summary context-summary)
+                 (codex-ide--freeze-region context-start (point))))
+             (codex-ide--delete-input-overlay session)
+             (codex-ide--sync-prompt-minor-mode session)
+             (when-let* ((start (codex-ide-session-input-prompt-start-marker session)))
+               (if-let* ((turn-id (codex-ide-session-current-turn-id session)))
+                   (codex-ide--record-turn-start session turn-id start)
+                 (codex-ide--set-pending-turn-start-marker
+                  session
+                  (copy-marker start nil))))
+             (codex-ide--insert-pending-output-indicator session)
+             (setf (codex-ide-session-output-prefix-inserted session) t
+                   (codex-ide-session-status session) "running")
+             (goto-char (point-max))
+             (codex-ide--insert-input-prompt session)
+             (unless quiet
+               (codex-ide--update-header-line session)))))
         (codex-ide--discard-buffer-undo-history)))))
 
 (defun codex-ide--shell-command-string (command)
@@ -2780,56 +2786,56 @@ Return non-nil when an item result block was found."
         (let ((session (codex-ide--session-for-buffer buffer))
               (start (marker-position header-start)))
           (codex-ide--with-transcript-render-transaction-at
-           (session buffer start :local (codex-ide--local-transcript-insertion-p))
-           (codex-ide--maybe-save-transcript-position
-            start
-            (codex-ide--without-undo-recording
-             (let ((inhibit-read-only t)
-                   (restore-point (codex-ide--input-point-marker session))
-                   (moving (= (point) (point-max)))
-                   (body-empty (= (marker-position body-start)
-                                  (marker-position body-end)))
-                   (header-prefix-function
-                    (or (overlay-get overlay :header-prefix-function)
-                        #'codex-ide--item-result-header-prefix-text))
-                   (open-function (codex-ide--item-result-open-function overlay))
-                   (command-output-p
-                    (equal (overlay-get overlay :item-type) "commandExecution")))
-               (codex-ide--with-item-result-transcript-mutation
-                overlay restore-point moving
-                (goto-char start)
-                (delete-region start (marker-position header-end))
-                (if command-output-p
-                    (codex-ide-renderer-insert-command-output-header
-                     overlay
-                     (funcall header-prefix-function overlay)
-                     #'codex-ide--toggle-item-result-overlay
-                     open-function
-                     :keymap codex-ide-item-result-map
-                     :overlay-property codex-ide-item-result-overlay-property)
-                  (codex-ide-renderer-insert-item-result-header
-                   overlay
-                   (funcall header-prefix-function overlay)
-                   #'codex-ide--toggle-item-result-overlay
-                   open-function
-                   :keymap codex-ide-item-result-map
-                   :overlay-property codex-ide-item-result-overlay-property
-                   :toggle-help-echo (overlay-get overlay :toggle-help-echo)
-                   :toggle-button-help (overlay-get overlay :toggle-button-help)
-                   :open-button-label (overlay-get overlay :open-button-label)
-                   :open-button-help (overlay-get overlay :open-button-help)
-                   :open-button-keymap (codex-ide-nav-button-keymap)))
-                (set-marker header-start start)
-                (set-marker header-end (point))
-                (set-marker body-start (point))
-                (when body-empty
-                  (set-marker body-end (point)))
-                (move-overlay overlay
-                              (marker-position body-start)
-                              (marker-position body-end))
-                (codex-ide--advance-active-boundary-after buffer body-end)
-                (codex-ide--freeze-region (marker-position header-start)
-                                          (marker-position header-end))))))))))))
+              (session buffer start :local (codex-ide--local-transcript-insertion-p))
+            (codex-ide--maybe-save-transcript-position
+                start
+              (codex-ide--without-undo-recording
+               (let ((inhibit-read-only t)
+                     (restore-point (codex-ide--input-point-marker session))
+                     (moving (= (point) (point-max)))
+                     (body-empty (= (marker-position body-start)
+                                    (marker-position body-end)))
+                     (header-prefix-function
+                      (or (overlay-get overlay :header-prefix-function)
+                          #'codex-ide--item-result-header-prefix-text))
+                     (open-function (codex-ide--item-result-open-function overlay))
+                     (command-output-p
+                      (equal (overlay-get overlay :item-type) "commandExecution")))
+                 (codex-ide--with-item-result-transcript-mutation
+                     overlay restore-point moving
+                   (goto-char start)
+                   (delete-region start (marker-position header-end))
+                   (if command-output-p
+                       (codex-ide-renderer-insert-command-output-header
+                        overlay
+                        (funcall header-prefix-function overlay)
+                        #'codex-ide--toggle-item-result-overlay
+                        open-function
+                        :keymap codex-ide-item-result-map
+                        :overlay-property codex-ide-item-result-overlay-property)
+                     (codex-ide-renderer-insert-item-result-header
+                      overlay
+                      (funcall header-prefix-function overlay)
+                      #'codex-ide--toggle-item-result-overlay
+                      open-function
+                      :keymap codex-ide-item-result-map
+                      :overlay-property codex-ide-item-result-overlay-property
+                      :toggle-help-echo (overlay-get overlay :toggle-help-echo)
+                      :toggle-button-help (overlay-get overlay :toggle-button-help)
+                      :open-button-label (overlay-get overlay :open-button-label)
+                      :open-button-help (overlay-get overlay :open-button-help)
+                      :open-button-keymap (codex-ide-nav-button-keymap)))
+                   (set-marker header-start start)
+                   (set-marker header-end (point))
+                   (set-marker body-start (point))
+                   (when body-empty
+                     (set-marker body-end (point)))
+                   (move-overlay overlay
+                                 (marker-position body-start)
+                                 (marker-position body-end))
+                   (codex-ide--advance-active-boundary-after buffer body-end)
+                   (codex-ide--freeze-region (marker-position header-start)
+                                             (marker-position header-end))))))))))))
 
 (defun codex-ide--set-item-result-body (overlay display-text)
   "Refresh OVERLAY's visible body using DISPLAY-TEXT.
@@ -2847,39 +2853,39 @@ When OVERLAY is folded, remove the body text from the transcript buffer."
           (let ((session (codex-ide--session-for-buffer buffer))
                 (transaction-position (marker-position body-start)))
             (codex-ide--with-transcript-render-transaction-at
-             (session buffer transaction-position
-                      :local (codex-ide--local-transcript-insertion-p))
-             (codex-ide--maybe-save-transcript-position
-              transaction-position
-              (codex-ide--without-undo-recording
-               (let ((inhibit-read-only t)
-                     (restore-point (codex-ide--input-point-marker session))
-                     (moving (= (point) (point-max)))
-                     (body-insert-function
-                      (or (overlay-get overlay :body-insert-function)
-                          #'codex-ide-renderer-insert-item-result-body))
-                     start)
-                 (codex-ide--with-item-result-transcript-mutation
-                  overlay restore-point moving
-                  (codex-ide-renderer-clear-result-rail-overlays
-                   overlay)
-                  (delete-region (marker-position body-start)
-                                 (marker-position body-end))
-                  (goto-char (marker-position body-start))
-                  (setq start (point))
-                  (unless (overlay-get overlay :folded)
-                    (funcall body-insert-function
-                             display-text
-                             :keymap codex-ide-item-result-map
-                             :overlay overlay
-                             :overlay-property codex-ide-item-result-overlay-property
-                             :properties (overlay-get overlay :body-properties))
-                    (codex-ide--freeze-region start (point)))
-                  (set-marker body-end (point))
-                  (move-overlay overlay
-                                (marker-position body-start)
-                                (marker-position body-end))
-                  (codex-ide--advance-active-boundary-after buffer body-end))))))))))))
+                (session buffer transaction-position
+                         :local (codex-ide--local-transcript-insertion-p))
+              (codex-ide--maybe-save-transcript-position
+                  transaction-position
+                (codex-ide--without-undo-recording
+                 (let ((inhibit-read-only t)
+                       (restore-point (codex-ide--input-point-marker session))
+                       (moving (= (point) (point-max)))
+                       (body-insert-function
+                        (or (overlay-get overlay :body-insert-function)
+                            #'codex-ide-renderer-insert-item-result-body))
+                       start)
+                   (codex-ide--with-item-result-transcript-mutation
+                       overlay restore-point moving
+                     (codex-ide-renderer-clear-result-rail-overlays
+                      overlay)
+                     (delete-region (marker-position body-start)
+                                    (marker-position body-end))
+                     (goto-char (marker-position body-start))
+                     (setq start (point))
+                     (unless (overlay-get overlay :folded)
+                       (funcall body-insert-function
+                                display-text
+                                :keymap codex-ide-item-result-map
+                                :overlay overlay
+                                :overlay-property codex-ide-item-result-overlay-property
+                                :properties (overlay-get overlay :body-properties))
+                       (codex-ide--freeze-region start (point)))
+                     (set-marker body-end (point))
+                     (move-overlay overlay
+                                   (marker-position body-start)
+                                   (marker-position body-end))
+                     (codex-ide--advance-active-boundary-after buffer body-end))))))))))))
 
 (defun codex-ide--ensure-item-result-block (session item-id)
   "Return the item result overlay for ITEM-ID in SESSION, creating it."
@@ -2890,7 +2896,7 @@ When OVERLAY is folded, remove the body text from the transcript buffer."
         (progn
           (with-current-buffer (overlay-buffer existing)
             (codex-ide--with-item-result-transcript-mutation
-             existing nil nil))
+                existing nil nil))
           existing)
       (let ((buffer (codex-ide-session-buffer session))
             overlay)
@@ -2932,90 +2938,90 @@ When OVERLAY is folded, remove the body text from the transcript buffer."
                       (command-output-p (equal (plist-get state :type)
                                                "commandExecution")))
                  (codex-ide--with-transcript-render-transaction-at
-                  (session buffer insertion-position :local local-insertion)
-                  (codex-ide--maybe-save-transcript-position insertion-position
-							     (goto-char insertion-position)
-							     (setq header-start (copy-marker (point)))
-							     (setq overlay (make-overlay (point) (point) buffer nil nil))
-							     (overlay-put overlay 'face 'codex-ide-command-output-face)
-							     (overlay-put overlay codex-ide-item-result-overlay-property overlay)
-							     (overlay-put overlay :session session)
-							     (overlay-put overlay :item-id item-id)
-							     (overlay-put overlay :item-type (plist-get state :type))
-							     (overlay-put overlay :label (or (plist-get state :item-result-label)
-											     "output"))
-							     (overlay-put overlay :header-prefix-function
-									  (plist-get state :item-result-header-prefix-function))
-							     (overlay-put overlay :body-insert-function
-									  (plist-get state :item-result-body-insert-function))
-							     (overlay-put overlay :open-function
-									  (plist-get state :item-result-open-function))
-							     (overlay-put overlay :open-button-label
-									  (plist-get state :item-result-open-button-label))
-							     (overlay-put overlay :open-button-help
-									  (plist-get state :item-result-open-button-help))
-							     (overlay-put overlay :toggle-help-echo
-									  (plist-get state :item-result-toggle-help-echo))
-							     (overlay-put overlay :toggle-button-help
-									  (plist-get state :item-result-toggle-button-help))
-							     (overlay-put overlay :buffer-name
-									  (plist-get state :item-result-buffer-name))
-							     (overlay-put overlay :directory
-									  (plist-get state :item-result-directory))
-							     (overlay-put overlay :diff-stats
-									  (plist-get state :item-result-stats))
-							     (overlay-put overlay :header-start header-start)
-							     (overlay-put overlay :display-text "")
-							     (overlay-put overlay :line-count 0)
-							     (overlay-put overlay :visible-line-count 0)
-							     (overlay-put overlay :truncated nil)
-							     (overlay-put overlay :folded initial-folded)
-							     (overlay-put overlay :complete nil)
-							     (overlay-put overlay 'invisible (and initial-folded t))
-							     (overlay-put overlay :body-properties nil)
-							     (if command-output-p
-								 (codex-ide-renderer-insert-command-output-header
-								  overlay
-								  (funcall
-								   (or (overlay-get overlay :header-prefix-function)
-								       #'codex-ide--item-result-header-prefix-text)
-								   overlay)
-								  #'codex-ide--toggle-item-result-overlay
-								  (codex-ide--item-result-open-function overlay)
-								  :keymap codex-ide-item-result-map
-								  :overlay-property codex-ide-item-result-overlay-property)
-							       (codex-ide-renderer-insert-item-result-header
-								overlay
-								(funcall
-								 (or (overlay-get overlay :header-prefix-function)
-								     #'codex-ide--item-result-header-prefix-text)
-								 overlay)
-								#'codex-ide--toggle-item-result-overlay
-								(codex-ide--item-result-open-function overlay)
-								:keymap codex-ide-item-result-map
-								:overlay-property codex-ide-item-result-overlay-property
-								:toggle-help-echo (overlay-get overlay :toggle-help-echo)
-								:toggle-button-help (overlay-get overlay :toggle-button-help)
-								:open-button-label (overlay-get overlay :open-button-label)
-								:open-button-help (overlay-get overlay :open-button-help)))
-							     (setq header-end (copy-marker (point)))
-							     (setq body-start (copy-marker (point)))
-							     (setq body-end (copy-marker (point)))
-							     (overlay-put overlay :header-end header-end)
-							     (overlay-put overlay :body-start body-start)
-							     (overlay-put overlay :body-end body-end)
-							     (codex-ide--freeze-region (marker-position header-start)
-										       (marker-position header-end))
-							     (codex-ide--advance-append-boundary-after
-							      buffer
-							      insertion-position
-							      (point))
-							     (when advance-active-boundary
-							       (set-marker active-boundary (point)))
-							     (when (markerp anchor)
-							       (set-marker anchor nil))
-							     (codex-ide--with-item-result-transcript-mutation
-							      overlay restore-point moving)))))))
+                     (session buffer insertion-position :local local-insertion)
+                   (codex-ide--maybe-save-transcript-position insertion-position
+							    (goto-char insertion-position)
+							    (setq header-start (copy-marker (point)))
+							    (setq overlay (make-overlay (point) (point) buffer nil nil))
+							    (overlay-put overlay 'face 'codex-ide-command-output-face)
+							    (overlay-put overlay codex-ide-item-result-overlay-property overlay)
+							    (overlay-put overlay :session session)
+							    (overlay-put overlay :item-id item-id)
+							    (overlay-put overlay :item-type (plist-get state :type))
+							    (overlay-put overlay :label (or (plist-get state :item-result-label)
+											    "output"))
+							    (overlay-put overlay :header-prefix-function
+									 (plist-get state :item-result-header-prefix-function))
+							    (overlay-put overlay :body-insert-function
+									 (plist-get state :item-result-body-insert-function))
+							    (overlay-put overlay :open-function
+									 (plist-get state :item-result-open-function))
+							    (overlay-put overlay :open-button-label
+									 (plist-get state :item-result-open-button-label))
+							    (overlay-put overlay :open-button-help
+									 (plist-get state :item-result-open-button-help))
+							    (overlay-put overlay :toggle-help-echo
+									 (plist-get state :item-result-toggle-help-echo))
+							    (overlay-put overlay :toggle-button-help
+									 (plist-get state :item-result-toggle-button-help))
+							    (overlay-put overlay :buffer-name
+									 (plist-get state :item-result-buffer-name))
+							    (overlay-put overlay :directory
+									 (plist-get state :item-result-directory))
+							    (overlay-put overlay :diff-stats
+									 (plist-get state :item-result-stats))
+							    (overlay-put overlay :header-start header-start)
+							    (overlay-put overlay :display-text "")
+							    (overlay-put overlay :line-count 0)
+							    (overlay-put overlay :visible-line-count 0)
+							    (overlay-put overlay :truncated nil)
+							    (overlay-put overlay :folded initial-folded)
+							    (overlay-put overlay :complete nil)
+							    (overlay-put overlay 'invisible (and initial-folded t))
+							    (overlay-put overlay :body-properties nil)
+							    (if command-output-p
+								(codex-ide-renderer-insert-command-output-header
+								 overlay
+								 (funcall
+								  (or (overlay-get overlay :header-prefix-function)
+								      #'codex-ide--item-result-header-prefix-text)
+								  overlay)
+								 #'codex-ide--toggle-item-result-overlay
+								 (codex-ide--item-result-open-function overlay)
+								 :keymap codex-ide-item-result-map
+								 :overlay-property codex-ide-item-result-overlay-property)
+							      (codex-ide-renderer-insert-item-result-header
+							       overlay
+							       (funcall
+								(or (overlay-get overlay :header-prefix-function)
+								    #'codex-ide--item-result-header-prefix-text)
+								overlay)
+							       #'codex-ide--toggle-item-result-overlay
+							       (codex-ide--item-result-open-function overlay)
+							       :keymap codex-ide-item-result-map
+							       :overlay-property codex-ide-item-result-overlay-property
+							       :toggle-help-echo (overlay-get overlay :toggle-help-echo)
+							       :toggle-button-help (overlay-get overlay :toggle-button-help)
+							       :open-button-label (overlay-get overlay :open-button-label)
+							       :open-button-help (overlay-get overlay :open-button-help)))
+							    (setq header-end (copy-marker (point)))
+							    (setq body-start (copy-marker (point)))
+							    (setq body-end (copy-marker (point)))
+							    (overlay-put overlay :header-end header-end)
+							    (overlay-put overlay :body-start body-start)
+							    (overlay-put overlay :body-end body-end)
+							    (codex-ide--freeze-region (marker-position header-start)
+										      (marker-position header-end))
+							    (codex-ide--advance-append-boundary-after
+							     buffer
+							     insertion-position
+							     (point))
+							    (when advance-active-boundary
+							      (set-marker active-boundary (point)))
+							    (when (markerp anchor)
+							      (set-marker anchor nil))
+							    (codex-ide--with-item-result-transcript-mutation
+							        overlay restore-point moving)))))))
           (setq state (plist-put state :item-result-overlay overlay))
           (setq state (plist-put state :item-result-anchor-marker nil))
           (when (equal (plist-get state :type) "commandExecution")
@@ -3327,25 +3333,25 @@ Return the rendered detail line strings."
                     (= insertion-position (marker-position active-boundary))))
               end)
          (codex-ide--with-transcript-render-transaction-at
-          (session buffer insertion-position)
-          (codex-ide--maybe-save-transcript-position
-           insertion-position
-           (goto-char insertion-position)
-           (setq end
-                 (cdr
-                  (codex-ide-renderer-insert-shell-command-detail
-                   command
-                   (codex-ide--current-agent-text-properties))))
-           (codex-ide--finish-transcript-append
-            buffer
-            insertion-position
-            end
-            active-boundary
-            advance-active-boundary)
-           (if moving
-               (goto-char (point-max))
-             (goto-char original-point))
-           (set-marker original-point nil))))))))
+             (session buffer insertion-position)
+           (codex-ide--maybe-save-transcript-position
+               insertion-position
+             (goto-char insertion-position)
+             (setq end
+                   (cdr
+                    (codex-ide-renderer-insert-shell-command-detail
+                     command
+                     (codex-ide--current-agent-text-properties))))
+             (codex-ide--finish-transcript-append
+              buffer
+              insertion-position
+              end
+              active-boundary
+              advance-active-boundary)
+             (if moving
+                 (goto-char (point-max))
+               (goto-char original-point))
+             (set-marker original-point nil))))))))
 
 (defun codex-ide--item-detail-block (text)
   "Format TEXT as a block of indented detail lines."
@@ -3481,98 +3487,98 @@ does not install the general transcript item-result overlay into ITEM-ID state."
              (not (string-empty-p text)))
     (let ((trimmed (string-trim-right text)))
       (unless (string-empty-p trimmed)
-	(let* ((buffer (current-buffer))
-	       (directory (codex-ide-session-directory session))
-	       (display-text
-	        (codex-ide-diff-data-display-text trimmed directory))
+	        (let* ((buffer (current-buffer))
+	               (directory (codex-ide-session-directory session))
+	               (display-text
+	                (codex-ide-diff-data-display-text trimmed directory))
                (stats (codex-ide--file-change-diff-stats display-text))
                (folded (codex-ide--file-change-diff-folded-p trimmed))
                header-start
                header-end
-	       body-start
-	       body-end
-	       overlay)
+	               body-start
+	               body-end
+	               overlay)
           (let ((inhibit-read-only t))
             (codex-ide--with-transcript-render-transaction-at
-             (session buffer (point)
-                      :local (codex-ide--local-transcript-insertion-p))
-             (setq header-start (copy-marker (point)))
-             (setq overlay (make-overlay (point) (point) buffer nil nil))
-             (overlay-put overlay 'face 'codex-ide-command-output-face)
-             (overlay-put overlay codex-ide-item-result-overlay-property overlay)
-             (overlay-put overlay :session session)
-             (overlay-put overlay :item-id item-id)
-             (overlay-put overlay :item-type "fileChange")
-             (overlay-put overlay :label "diff")
-             (overlay-put overlay :header-prefix-function
-                          #'codex-ide--file-change-diff-header-prefix-text)
-             (overlay-put overlay :body-insert-function
-                          #'codex-ide--insert-file-change-diff-body)
-             (overlay-put overlay :open-function
-                          #'codex-ide--open-file-change-diff-overlay)
-             (overlay-put overlay :open-button-label "open diff")
-             (overlay-put overlay :open-button-help
-                          "Open this Codex diff in a dedicated diff buffer")
-             (overlay-put overlay :toggle-help-echo "RET toggles this diff")
-             (overlay-put overlay :toggle-button-help "Toggle this diff")
-             (overlay-put overlay :buffer-name
-                          (codex-ide-diff-buffer-name-for-session buffer))
-             (overlay-put overlay :directory directory)
-             (overlay-put overlay :diff-stats stats)
-             (overlay-put overlay :result-full-text trimmed)
-             (overlay-put overlay :display-text display-text)
-             (overlay-put overlay :line-count (plist-get stats :line-count))
-             (overlay-put overlay
-                          :visible-line-count
-                          (plist-get stats :line-count))
-             (overlay-put overlay :truncated nil)
-             (overlay-put overlay :folded folded)
-             (overlay-put overlay :complete t)
-             (overlay-put overlay 'invisible (and folded t))
-             (overlay-put overlay :body-properties
-                          (codex-ide--current-agent-text-properties))
-             (codex-ide-renderer-insert-item-result-header
-              overlay
-              (codex-ide--file-change-diff-header-prefix-text overlay)
-              #'codex-ide--toggle-item-result-overlay
-              (codex-ide--item-result-open-function overlay)
-              :keymap codex-ide-item-result-map
-              :overlay-property codex-ide-item-result-overlay-property
-              :toggle-help-echo (overlay-get overlay :toggle-help-echo)
-              :toggle-button-help (overlay-get overlay :toggle-button-help)
-              :open-button-label (overlay-get overlay :open-button-label)
-              :open-button-help (overlay-get overlay :open-button-help)
-              :open-button-keymap (codex-ide-nav-button-keymap))
-             (setq header-end (copy-marker (point)))
-             (setq body-start (copy-marker (point)))
-             (setq body-end (copy-marker (point)))
-             (overlay-put overlay :header-start header-start)
-             (overlay-put overlay :header-end header-end)
-             (overlay-put overlay :body-start body-start)
-             (overlay-put overlay :body-end body-end)
-             (codex-ide--freeze-region (marker-position header-start)
-                                       (marker-position header-end))
-             (unless folded
-               (let ((body-range
-                      (codex-ide--insert-file-change-diff-body
-                       display-text
-                       :keymap codex-ide-item-result-map
-                       :overlay overlay
-                       :overlay-property codex-ide-item-result-overlay-property
-                       :properties (overlay-get overlay :body-properties))))
-                 (set-marker body-start (car body-range))
-                 (set-marker body-end (cdr body-range))
-                 (codex-ide--freeze-region (car body-range) (cdr body-range))))
-             (move-overlay overlay
-                           (marker-position body-start)
-                           (marker-position body-end))
-             (codex-ide--maybe-auto-open-file-change-diff
-              trimmed
-              (codex-ide-session-buffer session)
-              'approval)
-             (codex-ide--transcript-render-context-note-position
-              (marker-position body-end))
-             overlay)))))))
+                (session buffer (point)
+                         :local (codex-ide--local-transcript-insertion-p))
+              (setq header-start (copy-marker (point)))
+              (setq overlay (make-overlay (point) (point) buffer nil nil))
+              (overlay-put overlay 'face 'codex-ide-command-output-face)
+              (overlay-put overlay codex-ide-item-result-overlay-property overlay)
+              (overlay-put overlay :session session)
+              (overlay-put overlay :item-id item-id)
+              (overlay-put overlay :item-type "fileChange")
+              (overlay-put overlay :label "diff")
+              (overlay-put overlay :header-prefix-function
+                           #'codex-ide--file-change-diff-header-prefix-text)
+              (overlay-put overlay :body-insert-function
+                           #'codex-ide--insert-file-change-diff-body)
+              (overlay-put overlay :open-function
+                           #'codex-ide--open-file-change-diff-overlay)
+              (overlay-put overlay :open-button-label "open diff")
+              (overlay-put overlay :open-button-help
+                           "Open this Codex diff in a dedicated diff buffer")
+              (overlay-put overlay :toggle-help-echo "RET toggles this diff")
+              (overlay-put overlay :toggle-button-help "Toggle this diff")
+              (overlay-put overlay :buffer-name
+                           (codex-ide-diff-buffer-name-for-session buffer))
+              (overlay-put overlay :directory directory)
+              (overlay-put overlay :diff-stats stats)
+              (overlay-put overlay :result-full-text trimmed)
+              (overlay-put overlay :display-text display-text)
+              (overlay-put overlay :line-count (plist-get stats :line-count))
+              (overlay-put overlay
+                           :visible-line-count
+                           (plist-get stats :line-count))
+              (overlay-put overlay :truncated nil)
+              (overlay-put overlay :folded folded)
+              (overlay-put overlay :complete t)
+              (overlay-put overlay 'invisible (and folded t))
+              (overlay-put overlay :body-properties
+                           (codex-ide--current-agent-text-properties))
+              (codex-ide-renderer-insert-item-result-header
+               overlay
+               (codex-ide--file-change-diff-header-prefix-text overlay)
+               #'codex-ide--toggle-item-result-overlay
+               (codex-ide--item-result-open-function overlay)
+               :keymap codex-ide-item-result-map
+               :overlay-property codex-ide-item-result-overlay-property
+               :toggle-help-echo (overlay-get overlay :toggle-help-echo)
+               :toggle-button-help (overlay-get overlay :toggle-button-help)
+               :open-button-label (overlay-get overlay :open-button-label)
+               :open-button-help (overlay-get overlay :open-button-help)
+               :open-button-keymap (codex-ide-nav-button-keymap))
+              (setq header-end (copy-marker (point)))
+              (setq body-start (copy-marker (point)))
+              (setq body-end (copy-marker (point)))
+              (overlay-put overlay :header-start header-start)
+              (overlay-put overlay :header-end header-end)
+              (overlay-put overlay :body-start body-start)
+              (overlay-put overlay :body-end body-end)
+              (codex-ide--freeze-region (marker-position header-start)
+                                        (marker-position header-end))
+              (unless folded
+                (let ((body-range
+                       (codex-ide--insert-file-change-diff-body
+                        display-text
+                        :keymap codex-ide-item-result-map
+                        :overlay overlay
+                        :overlay-property codex-ide-item-result-overlay-property
+                        :properties (overlay-get overlay :body-properties))))
+                  (set-marker body-start (car body-range))
+                  (set-marker body-end (cdr body-range))
+                  (codex-ide--freeze-region (car body-range) (cdr body-range))))
+              (move-overlay overlay
+                            (marker-position body-start)
+                            (marker-position body-end))
+              (codex-ide--maybe-auto-open-file-change-diff
+               trimmed
+               (codex-ide-session-buffer session)
+               'approval)
+              (codex-ide--transcript-render-context-note-position
+               (marker-position body-end))
+              overlay)))))))
 
 (defun codex-ide--render-file-change-diff-text
     (session item-id text &optional context)
@@ -3833,45 +3839,45 @@ CONTEXT is either nil for ordinary transcript rendering or `approval'."
                    (= insertion-position (marker-position active-boundary))))
              range)
         (codex-ide--with-transcript-render-transaction-at
-         (session buffer insertion-position)
-         (codex-ide--maybe-save-transcript-position
-          insertion-position
-          (codex-ide-renderer-append-to-buffer
-           ""
-           :insertion-point insertion-position
-           :restore-point restore-point
-           :preserve-point t
-           :move-point-to-end moving
-           :after-insert
-           (lambda (_start _end inserted-at)
-             (let ((start inserted-at)
-                   (props (codex-ide--current-agent-text-properties)))
-               (goto-char inserted-at)
-               (insert (propertize
-                        (string-trim-right
-                         (codex-ide--item-detail-line text))
-                        'face 'codex-ide-item-detail-face
-                        'font-lock-face 'codex-ide-item-detail-face
-                        'rear-nonsticky t
-                        'front-sticky t))
-               (add-text-properties start (point) props)
-               (insert (propertize " " 'face 'codex-ide-item-detail-face))
-               (codex-ide-renderer-insert-action-button
-                button-label
-                callback
-                help-echo
-                (codex-ide-nav-button-keymap)
-                props)
-               (insert (propertize "\n" 'face 'codex-ide-item-detail-face))
-               (setq range (cons start (point)))
-               (codex-ide--freeze-region start (point))
-               (codex-ide--finish-transcript-append
-                buffer
-                inserted-at
-                (point)
-                active-boundary
-                advance-active-boundary
-                session))))))
+            (session buffer insertion-position)
+          (codex-ide--maybe-save-transcript-position
+              insertion-position
+            (codex-ide-renderer-append-to-buffer
+             ""
+             :insertion-point insertion-position
+             :restore-point restore-point
+             :preserve-point t
+             :move-point-to-end moving
+             :after-insert
+             (lambda (_start _end inserted-at)
+               (let ((start inserted-at)
+                     (props (codex-ide--current-agent-text-properties)))
+                 (goto-char inserted-at)
+                 (insert (propertize
+                          (string-trim-right
+                           (codex-ide--item-detail-line text))
+                          'face 'codex-ide-item-detail-face
+                          'font-lock-face 'codex-ide-item-detail-face
+                          'rear-nonsticky t
+                          'front-sticky t))
+                 (add-text-properties start (point) props)
+                 (insert (propertize " " 'face 'codex-ide-item-detail-face))
+                 (codex-ide-renderer-insert-action-button
+                  button-label
+                  callback
+                  help-echo
+                  (codex-ide-nav-button-keymap)
+                  props)
+                 (insert (propertize "\n" 'face 'codex-ide-item-detail-face))
+                 (setq range (cons start (point)))
+                 (codex-ide--freeze-region start (point))
+                 (codex-ide--finish-transcript-append
+                  buffer
+                  inserted-at
+                  (point)
+                  active-boundary
+                  advance-active-boundary
+                  session))))))
         range))))
 
 (defun codex-ide--render-collab-agent-details
@@ -3881,13 +3887,13 @@ When COMPLETION is non-nil, render completion-specific state details."
   (let (rendered-lines)
     (cl-labels
         ((append-detail
-           (text face)
-           (let ((range
-                  (codex-ide--append-agent-text
-                   buffer
-                   (codex-ide--item-detail-line text)
-                   (or face 'codex-ide-item-detail-face))))
-             (push range rendered-lines))))
+          (text face)
+          (let ((range
+                 (codex-ide--append-agent-text
+                  buffer
+                  (codex-ide--item-detail-line text)
+                  (or face 'codex-ide-item-detail-face))))
+            (push range rendered-lines))))
       (append-detail
        (format "status: %s"
                (codex-ide--collab-agent-status-text (alist-get 'status item)))
@@ -4107,34 +4113,34 @@ When COMPLETION is non-nil, render completion-specific state details."
            (moving (= (point) (point-max)))
            (start (marker-position start-marker)))
       (codex-ide--with-transcript-render-transaction-at
-       (session buffer start)
-       (codex-ide--maybe-save-transcript-position
-        start
-        (codex-ide--without-undo-recording
-         (let ((inhibit-read-only t))
-           (delete-region start (marker-position end-marker))
-           (goto-char start)
-           (insert (propertize (format "* Reasoning: %s\n" text)
-                               'face 'shadow
-                               'font-lock-face 'shadow
-                               'rear-nonsticky t
-                               'front-sticky t))
-           (add-text-properties start (point)
-                                (codex-ide--current-agent-text-properties))
-           (codex-ide--freeze-region start (point))
-           (set-marker end-marker (point))
-           (when (and active-boundary
-                      (= (marker-position active-boundary) start))
-             (set-marker active-boundary (point)))
-           (codex-ide--transcript-render-context-note-position
-            (if (and active-boundary
-                     (marker-buffer active-boundary))
-                (marker-position active-boundary)
-              (marker-position end-marker)))
-           (if restore-point
-               (codex-ide--restore-input-point-marker restore-point)
-             (when moving
-               (goto-char (point-max)))))))))))
+          (session buffer start)
+        (codex-ide--maybe-save-transcript-position
+            start
+          (codex-ide--without-undo-recording
+           (let ((inhibit-read-only t))
+             (delete-region start (marker-position end-marker))
+             (goto-char start)
+             (insert (propertize (format "* Reasoning: %s\n" text)
+                                 'face 'shadow
+                                 'font-lock-face 'shadow
+                                 'rear-nonsticky t
+                                 'front-sticky t))
+             (add-text-properties start (point)
+                                  (codex-ide--current-agent-text-properties))
+             (codex-ide--freeze-region start (point))
+             (set-marker end-marker (point))
+             (when (and active-boundary
+                        (= (marker-position active-boundary) start))
+               (set-marker active-boundary (point)))
+             (codex-ide--transcript-render-context-note-position
+              (if (and active-boundary
+                       (marker-buffer active-boundary))
+                  (marker-position active-boundary)
+                (marker-position end-marker)))
+             (if restore-point
+                 (codex-ide--restore-input-point-marker restore-point)
+               (when moving
+                 (goto-char (point-max)))))))))))
 
 (defun codex-ide--render-reasoning-delta (&optional session params)
   "Render a reasoning summary delta PARAMS for SESSION."
@@ -4420,16 +4426,16 @@ timer before revealing."
               (bounded-end (max (point-min) (min end (point-max)))))
           (when (< bounded-start bounded-end)
             (codex-ide--with-transcript-render-transaction-at
-             (session buffer bounded-start)
-             (if cancel-timer
-                 (codex-ide-renderer-reveal-streaming-deferred-markdown
-                  bounded-start
-                  bounded-end)
-               (codex-ide-renderer-clear-streaming-deferred-markdown
-                bounded-start
-                bounded-end))
-             (codex-ide--transcript-render-context-note-position
-              bounded-end)))
+                (session buffer bounded-start)
+              (if cancel-timer
+                  (codex-ide-renderer-reveal-streaming-deferred-markdown
+                   bounded-start
+                   bounded-end)
+                (codex-ide-renderer-clear-streaming-deferred-markdown
+                 bounded-start
+                 bounded-end))
+              (codex-ide--transcript-render-context-note-position
+               bounded-end)))
           t)))))
 
 (defun codex-ide--reveal-streaming-deferred-markdown-in-buffer (buffer)
@@ -4458,11 +4464,11 @@ Return non-nil when BUFFER is a Codex transcript and the reveal was handled."
                 (codex-ide--session-metadata-get
                  session
                  :agent-message-stream-render-start-marker))
-	       (start-marker
-	        (if (and (markerp message-start)
-	                 (eq (marker-buffer message-start) buffer))
-	            message-start
-	          stream-start)))
+	               (start-marker
+	                (if (and (markerp message-start)
+	                         (eq (marker-buffer message-start) buffer))
+	                    message-start
+	                  stream-start)))
           (when (and (markerp start-marker)
                      (eq (marker-buffer start-marker) buffer))
             (codex-ide--reveal-streaming-deferred-markdown-range
@@ -4587,7 +4593,7 @@ When CLOSING-NOTE is non-nil, append it before restoring the prompt."
         (let ((inhibit-read-only t))
           (goto-char (point-max))
           (codex-ide--with-transcript-render-transaction (session buffer)
-							 (codex-ide-renderer-insert-restored-user-message display-text))))
+            (codex-ide-renderer-insert-restored-user-message display-text))))
       t)))
 
 (defun codex-ide--append-restored-agent-message (session item)
@@ -4728,10 +4734,10 @@ Signal an error when THREAD-READ lacks replayable transcript items."
         (codex-ide--session-metadata-put session key nil))
       (let ((inhibit-read-only t))
         (codex-ide--with-transcript-render-transaction-at
-         (session buffer (point-min) :local t)
-         (erase-buffer)
-         (codex-ide-renderer-insert-session-header working-dir)
-         (codex-ide--transcript-render-context-note-position (point))))))
+            (session buffer (point-min) :local t)
+          (erase-buffer)
+          (codex-ide-renderer-insert-session-header working-dir)
+          (codex-ide--transcript-render-context-note-position (point))))))
   (codex-ide--session-metadata-put session :turn-start-index nil)
   (codex-ide--set-pending-turn-start-marker session nil))
 
@@ -4739,26 +4745,31 @@ Signal an error when THREAD-READ lacks replayable transcript items."
   "Prompt the user with PROMPT and return one of CHOICES."
   (cdr (assoc (completing-read prompt choices nil t) choices)))
 
-(defun codex-ide--pending-approvals (&optional session)
-  "Return a pending-only approval table snapshot for SESSION.
-
-This compatibility helper preserves the old pending-oriented read semantics.
-Mutating the returned table does not update the canonical approval store."
-  (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
-  (let ((pending (make-hash-table :test 'equal)))
-    (dolist (approval (codex-ide-approvals-data-pending-list session))
-      (puthash (plist-get approval :id)
-               (append approval (codex-ide-approvals-data-view approval))
-               pending))
-    pending))
-
-(defun codex-ide--pending-approvals-p (session)
+(defun codex-ide--unresolved-approvals-p (session)
   "Return non-nil when SESSION has unresolved approvals."
-  (codex-ide-approvals-data-pending-p session))
+  (codex-ide-approvals-data-unresolved-p session))
 
-(defun codex-ide--status-preserving-pending-approvals (session status)
+(defun codex-ide--active-approval-p (session)
+  "Return non-nil when SESSION has a rendered approval awaiting response."
+  (> (codex-ide-approvals-data-count session :status 'active) 0))
+
+(defun codex-ide--queued-approval-count (session)
+  "Return the number of SESSION approvals waiting behind the active approval."
+  (codex-ide-approvals-data-count session :status 'queued))
+
+(defun codex-ide--approval-placeholder-text (session text)
+  "Return approval placeholder TEXT annotated with SESSION queue count."
+  (let ((queued (and session (codex-ide--queued-approval-count session))))
+    (if (and queued (> queued 0))
+        (let ((suffix (format " (%d queued)" queued)))
+          (if (string-suffix-p "..." text)
+              (concat (substring text 0 -3) suffix "...")
+            (concat text suffix)))
+      text)))
+
+(defun codex-ide--status-preserving-unresolved-approvals (session status)
   "Return STATUS unless SESSION still needs approval attention."
-  (if (and (codex-ide--pending-approvals-p session)
+  (if (and (codex-ide--unresolved-approvals-p session)
            (not (member status '("error"))))
       "approval"
     status))
@@ -4799,6 +4810,25 @@ Mutating the returned table does not update the canonical approval store."
       ((equal value "cancel") 'canceled)
       (t 'accepted)))))
 
+(defun codex-ide--disable-approval-controls (start end)
+  "Remove button behavior from approval decision controls between START and END."
+  (let ((pos start)
+        next)
+    (while (< pos end)
+      (setq next (or (next-single-property-change
+                      pos
+                      'codex-ide-approval-control
+                      nil
+                      end)
+                     end))
+      (when (get-text-property pos 'codex-ide-approval-control)
+        (remove-text-properties
+         pos next
+         '(action nil mouse-face nil help-echo nil follow-link nil
+                  keymap nil button nil category nil
+                  codex-ide-approval-control nil)))
+      (setq pos next))))
+
 (defun codex-ide--mark-approval-resolved (approval label)
   "Update APPROVAL's transcript block to show resolved LABEL."
   (let* ((view (codex-ide-approvals-data-view approval))
@@ -4809,7 +4839,7 @@ Mutating the returned table does not update the canonical approval store."
     (when (and (buffer-live-p buffer)
                (markerp status-marker)
                (markerp start-marker)
-	       (markerp end-marker))
+	               (markerp end-marker))
       (with-current-buffer buffer
         (let ((session (codex-ide--session-for-buffer buffer))
               (inhibit-read-only t)
@@ -4817,32 +4847,29 @@ Mutating the returned table does not update the canonical approval store."
               (block-start (marker-position start-marker))
               (block-end (marker-position end-marker)))
           (codex-ide--with-transcript-render-transaction-at
-           (session buffer (or block-start status-pos))
-           (when status-pos
-             (save-excursion
-               (goto-char status-pos)
-               (codex-ide-renderer-insert-approval-resolution label)
-               (when (and (markerp end-marker)
-                          (eq (marker-buffer end-marker) buffer))
-                 (set-marker end-marker (point)))))
-           (when (and block-start block-end)
-             (remove-text-properties
-              block-start block-end
-              '(action nil mouse-face nil help-echo nil follow-link nil
-                       keymap nil button nil category nil)))
-           (when (and block-start block-end)
-             (codex-ide--freeze-region block-start (marker-position end-marker))
-             (codex-ide--advance-active-boundary-after buffer end-marker)
-             (codex-ide--transcript-render-context-note-position
-              (marker-position end-marker)))))))))
+              (session buffer (or block-start status-pos))
+            (when status-pos
+              (save-excursion
+                (goto-char status-pos)
+                (codex-ide-renderer-insert-approval-resolution label)
+                (when (and (markerp end-marker)
+                           (eq (marker-buffer end-marker) buffer))
+                  (set-marker end-marker (point)))))
+            (when (and block-start block-end)
+              (codex-ide--disable-approval-controls block-start block-end))
+            (when (and block-start block-end)
+              (codex-ide--freeze-region block-start (marker-position end-marker))
+              (codex-ide--advance-active-boundary-after buffer end-marker)
+              (codex-ide--transcript-render-context-note-position
+               (marker-position end-marker)))))))))
 
 (defun codex-ide--resolve-buffer-approval (session id value label)
-  "Resolve pending approval ID for SESSION as VALUE with display LABEL."
+  "Resolve active approval ID for SESSION as VALUE with display LABEL."
   (let* ((approval (codex-ide-approvals-data-get session id))
-         (pending-p (eq (plist-get approval :status) 'pending)))
+         (active-p (eq (plist-get approval :status) 'active)))
     (if (not approval)
         (message "Codex approval unknown")
-      (if (not pending-p)
+      (if (not active-p)
           (message "Codex approval already resolved")
         (let* ((kind (plist-get approval :kind))
                (result (codex-ide--approval-result
@@ -4863,24 +4890,51 @@ Mutating the returned table does not update the canonical approval store."
            :decision value
            :result result
            :clear-view t)
+          (codex-ide--jsonrpc-send-response session id result)
+          (codex-ide--render-next-queued-approval session)
           (codex-ide--set-session-status
            session
-           (codex-ide--status-preserving-pending-approvals
+           (codex-ide--status-preserving-unresolved-approvals
             session
             (if (codex-ide-session-current-turn-id session) "running" "idle"))
            'approval-resolved)
           (codex-ide--refresh-input-placeholder session)
           (codex-ide--update-header-line session)
-          (codex-ide--jsonrpc-send-response session id result))))))
+          (codex-ide--sync-session-approval-minor-mode session))))))
 
-(defun codex-ide--insert-approval-choice-button (session id label value)
-  "Insert an approval button for SESSION request ID with LABEL and VALUE."
+(defun codex-ide--sync-session-approval-minor-mode (session)
+  "Synchronize SESSION buffer's approval minor mode, when available."
+  (when-let* ((buffer (codex-ide-session-buffer session)))
+    (when (buffer-live-p buffer)
+      (with-current-buffer buffer
+        (codex-ide-session-mode-sync-approval-minor-mode session)
+        (codex-ide--sync-prompt-minor-mode session)))))
+
+(defun codex-ide--approval-key-label (index label)
+  "Return display text for approval action INDEX with LABEL."
+  (format "%d - %s" index label))
+
+(defun codex-ide--make-approval-key-action (session id label value)
+  "Return a keyboard action for SESSION approval ID."
+  (list :label label
+        :value value
+        :function
+        (lambda ()
+          (codex-ide--resolve-buffer-approval session id value label))))
+
+(defun codex-ide--insert-approval-choice-button
+    (session id label value &optional display-label)
+  "Insert an approval button for SESSION request ID with LABEL and VALUE.
+
+DISPLAY-LABEL, when non-nil, is used for the visible button text.  Resolution
+still records LABEL."
   (codex-ide-renderer-insert-action-button
-   label
+   (or display-label label)
    (lambda ()
      (codex-ide--resolve-buffer-approval session id value label))
    (format "Resolve Codex approval as %s" label)
-   (codex-ide-nav-button-keymap)))
+   (codex-ide-nav-button-keymap)
+   '(codex-ide-approval-control t)))
 
 (defun codex-ide--approval-file-change-diff-text (session params)
   "Return diff text for file-change approval PARAMS in SESSION."
@@ -4929,7 +4983,7 @@ Mutating the returned table does not update the canonical approval store."
       (codex-ide--show-session-buffer session :select nil))))
 
 (cl-defun codex-ide--render-interactive-request
-    (session id kind params &key title notify-message render-body metadata)
+    (session id &key title notify-message render-body)
   "Render an inline interactive request block for SESSION request ID."
   (let ((buffer (codex-ide-session-buffer session))
         (render-state nil)
@@ -4950,93 +5004,94 @@ Mutating the returned table does not update the canonical approval store."
         (setq active-boundary (codex-ide--active-input-boundary-marker buffer))
         (goto-char (codex-ide--transcript-insertion-position buffer))
         (codex-ide--with-transcript-render-transaction-at
-         (session buffer (point) :local t)
-         (pcase-let ((`(,start ,status ,end ,state)
-                      (codex-ide-renderer-insert-interactive-request-shell
-                       title
-                       (lambda ()
-                         (funcall render-body)))))
-           (setq start-marker (copy-marker start)
-                 status-marker (copy-marker status)
-                 end-marker (copy-marker end)
-                 render-state state)
-           (set-marker
-            (codex-ide-transcript-render-context-start-marker
-             codex-ide--transcript-render-context)
-            (marker-position start-marker))
-           (codex-ide--transcript-render-context-note-position
-            (marker-position end-marker)))
-         (codex-ide--freeze-region (marker-position start-marker)
-                                   (marker-position end-marker))
-         (when (and active-boundary
-                    (<= (marker-position active-boundary)
-                        (marker-position start-marker)))
-           (set-marker active-boundary (point)))
-         (dolist (range (plist-get render-state :writable-ranges))
-           (codex-ide--make-region-writable (marker-position (car range))
-                                            (marker-position (cdr range))))
-         (if restore-point
-             (codex-ide--restore-input-point-marker restore-point)
-           (when moving
-             (goto-char (point-max)))))))
+            (session buffer (point) :local t)
+          (pcase-let ((`(,start ,status ,end ,state)
+                       (codex-ide-renderer-insert-interactive-request-shell
+                        title
+                        (lambda ()
+                          (funcall render-body)))))
+            (setq start-marker (copy-marker start)
+                  status-marker (copy-marker status)
+                  end-marker (copy-marker end)
+                  render-state state)
+            (set-marker
+             (codex-ide-transcript-render-context-start-marker
+              codex-ide--transcript-render-context)
+             (marker-position start-marker))
+            (codex-ide--transcript-render-context-note-position
+             (marker-position end-marker)))
+          (codex-ide--freeze-region (marker-position start-marker)
+                                    (marker-position end-marker))
+          (when (and active-boundary
+                     (<= (marker-position active-boundary)
+                         (marker-position start-marker)))
+            (set-marker active-boundary (point)))
+          (dolist (range (plist-get render-state :writable-ranges))
+            (codex-ide--make-region-writable (marker-position (car range))
+                                             (marker-position (cdr range))))
+          (if restore-point
+              (codex-ide--restore-input-point-marker restore-point)
+            (when moving
+              (goto-char (point-max)))))))
     (when active-input-draft
       (codex-ide--insert-input-prompt session active-input-draft))
-    (codex-ide-approvals-data-add
+    (codex-ide-approvals-data-activate
      session
      id
-     kind
-     params
-     :turn-id (codex-ide-session-current-turn-id session)
      :view (append
             (list :start-marker start-marker
                   :status-marker status-marker
                   :end-marker end-marker)
-            (plist-get render-state :metadata))
-     :metadata metadata)
+            (plist-get render-state :metadata)))
+    (codex-ide--sync-session-approval-minor-mode session)
     (codex-ide--set-session-status session "approval" 'approval-requested)
     (codex-ide--refresh-input-placeholder session)
     (codex-ide--update-header-line session)
-    (codex-ide--run-session-event
-     'approval-requested
-     session
-     :id id
-     :kind kind
-     :params params)
     (codex-ide--notify-interactive-request session notify-message)))
 
 (cl-defun codex-ide--render-buffer-approval
-    (session id kind &key title details choices params)
+    (session id &key title details choices params)
   "Render an inline approval block for SESSION request ID."
   (codex-ide--render-interactive-request
    session
    id
-   kind
-   params
    :title title
    :notify-message "Codex approval required in %s"
    :render-body
    (lambda ()
-     (dolist (detail details)
-       (if-let* ((diff-text (and (eq (plist-get detail :kind) 'diff)
-                                 (plist-get detail :text)))
-                 (item-id (alist-get 'itemId params)))
-           (let ((state (copy-tree (or (codex-ide--item-state session item-id) '()))))
-             (codex-ide-renderer-insert-approval-label "Proposed changes:")
-             (codex-ide-renderer-insert-read-only "\n\n")
-             (setq state (plist-put state :item-result-anchor-marker nil))
-             (codex-ide--put-item-state session item-id state)
-             (codex-ide--insert-approval-file-change-diff-widget
-              session item-id diff-text)
-             (codex-ide-renderer-insert-read-only "\n"))
-         (codex-ide-renderer-insert-approval-detail detail))
-       (unless (eq (plist-get detail :kind) 'diff)
-         (codex-ide-renderer-insert-read-only "\n")))
-     (dolist (choice choices)
-       (codex-ide--insert-approval-choice-button
-        session id (car choice) (cdr choice))
-       (codex-ide-renderer-insert-read-only "\n"))
-     (codex-ide-renderer-insert-read-only "\n")
-     nil)))
+     (let ((key-index 0)
+           key-actions)
+       (dolist (detail details)
+         (if-let* ((diff-text (and (eq (plist-get detail :kind) 'diff)
+                                   (plist-get detail :text)))
+                   (item-id (alist-get 'itemId params)))
+             (let ((state (copy-tree
+                           (or (codex-ide--item-state session item-id) '()))))
+               (codex-ide-renderer-insert-approval-label "Proposed changes:")
+               (codex-ide-renderer-insert-read-only "\n\n")
+               (setq state (plist-put state :item-result-anchor-marker nil))
+               (codex-ide--put-item-state session item-id state)
+               (codex-ide--insert-approval-file-change-diff-widget
+                session item-id diff-text)
+               (codex-ide-renderer-insert-read-only "\n"))
+           (codex-ide-renderer-insert-approval-detail detail))
+         (unless (eq (plist-get detail :kind) 'diff)
+           (codex-ide-renderer-insert-read-only "\n")))
+       (dolist (choice choices)
+         (setq key-index (1+ key-index))
+         (let ((label (car choice))
+               (value (cdr choice)))
+           (push (codex-ide--make-approval-key-action session id label value)
+                 key-actions)
+           (codex-ide--insert-approval-choice-button
+            session
+            id
+            label
+            value
+            (codex-ide--approval-key-label key-index label)))
+         (codex-ide-renderer-insert-read-only "\n"))
+       (codex-ide-renderer-insert-read-only "\n")
+       (list :metadata (list :key-actions (nreverse key-actions)))))))
 
 (defun codex-ide--schedule-interactive-request (session body on-quit on-error)
   "Run BODY for SESSION on the next tick with shared quit/error handling."
@@ -5097,12 +5152,12 @@ Mutating the returned table does not update the canonical approval store."
           (let ((inhibit-read-only t)
                 (session (codex-ide--session-for-buffer buffer)))
             (codex-ide--with-transcript-render-transaction-at
-             (session buffer (marker-position start-marker) :local t)
-             (save-excursion
-               (codex-ide-renderer-replace-marker-region
-                start-marker end-marker label))
-             (codex-ide--transcript-render-context-note-position
-              (marker-position end-marker)))))))))
+                (session buffer (marker-position start-marker) :local t)
+              (save-excursion
+                (codex-ide-renderer-replace-marker-region
+                 start-marker end-marker label))
+              (codex-ide--transcript-render-context-note-position
+               (marker-position end-marker)))))))))
 
 (defun codex-ide--set-elicitation-choice-value (_session _id field label value)
   "Set FIELD for SESSION elicitation ID to VALUE and display LABEL."
@@ -5124,7 +5179,7 @@ Mutating the returned table does not update the canonical approval store."
   (let* ((approval (codex-ide-approvals-data-get session id))
          (fields (codex-ide-approvals-data-view-get approval :fields))
          (content nil))
-    (unless (and approval (eq (plist-get approval :status) 'pending))
+    (unless (and approval (eq (plist-get approval :status) 'active))
       (user-error "Codex elicitation already resolved"))
     (condition-case err
         (progn
@@ -5198,8 +5253,6 @@ Mutating the returned table does not update the canonical approval store."
     (codex-ide--render-interactive-request
      session
      id
-     'elicitation
-     request
      :title "[Input required]"
      :notify-message "Codex input required in %s"
      :render-body
@@ -5230,7 +5283,8 @@ Mutating the returned table does not update the canonical approval store."
              (codex-ide--resolve-buffer-approval
               session id '((action . "accept")) "open and continue"))
            nil
-           (codex-ide-nav-button-keymap))
+           (codex-ide-nav-button-keymap)
+           '(codex-ide-approval-control t))
           (codex-ide-renderer-insert-read-only "\n")
           (codex-ide-renderer-insert-action-button
            "continue"
@@ -5238,7 +5292,8 @@ Mutating the returned table does not update the canonical approval store."
              (codex-ide--resolve-buffer-approval
               session id '((action . "accept")) "continue"))
            nil
-           (codex-ide-nav-button-keymap))
+           (codex-ide-nav-button-keymap)
+           '(codex-ide-approval-control t))
           (codex-ide-renderer-insert-read-only "\n"))
          (_
           (codex-ide-renderer-insert-action-button
@@ -5246,7 +5301,8 @@ Mutating the returned table does not update the canonical approval store."
            (lambda ()
              (codex-ide--submit-buffer-elicitation session id))
            nil
-           (codex-ide-nav-button-keymap))
+           (codex-ide-nav-button-keymap)
+           '(codex-ide-approval-control t))
           (codex-ide-renderer-insert-read-only "\n")))
        (codex-ide-renderer-insert-action-button
         "decline"
@@ -5254,7 +5310,8 @@ Mutating the returned table does not update the canonical approval store."
           (codex-ide--resolve-buffer-approval
            session id '((action . "decline")) "decline"))
         nil
-        (codex-ide-nav-button-keymap))
+        (codex-ide-nav-button-keymap)
+        '(codex-ide-approval-control t))
        (codex-ide-renderer-insert-read-only "\n")
        (codex-ide-renderer-insert-action-button
         "cancel"
@@ -5262,7 +5319,8 @@ Mutating the returned table does not update the canonical approval store."
           (codex-ide--resolve-buffer-approval
            session id '((action . "cancel")) "cancel"))
         nil
-        (codex-ide-nav-button-keymap))
+        (codex-ide-nav-button-keymap)
+        '(codex-ide-approval-control t))
        (codex-ide-renderer-insert-read-only "\n\n")
        (list :writable-ranges writable-ranges
              :metadata (list :fields rendered-fields))))))
@@ -5281,27 +5339,153 @@ Mutating the returned table does not update the canonical approval store."
      '(("decline" . "decline")
        ("cancel turn" . "cancel")))))
 
+(defun codex-ide--enqueue-interactive-request (session id kind params)
+  "Queue approval-like request ID of KIND with PARAMS for SESSION."
+  (codex-ide-approvals-data-add
+   session
+   id
+   kind
+   params
+   :status 'queued
+   :turn-id (codex-ide-session-current-turn-id session))
+  (codex-ide--set-session-status session "approval" 'approval-requested)
+  (codex-ide--refresh-input-placeholder session)
+  (codex-ide--update-header-line session)
+  (codex-ide--run-session-event
+   'approval-requested
+   session
+   :id id
+   :kind kind
+   :params params)
+  (unless (codex-ide--active-approval-p session)
+    (codex-ide--render-next-queued-approval session)))
+
+(defun codex-ide--render-command-approval (session approval)
+  "Render queued command APPROVAL for SESSION."
+  (let* ((id (plist-get approval :id))
+         (params (plist-get approval :params))
+         (command (codex-ide--display-command-string
+                   (or (alist-get 'command params) "unknown command")))
+         (choices (codex-ide--command-approval-choices params)))
+    (codex-ide--render-buffer-approval
+     session
+     id
+     :title "[Approval required]"
+     :details (delq nil
+                    (list
+                     (list :kind 'command :text command)
+                     (when-let* ((reason (alist-get 'reason params)))
+                       (list :label "Reason" :text reason))))
+     :choices choices
+     :params params)))
+
+(defun codex-ide--render-file-change-approval (session approval)
+  "Render queued file-change APPROVAL for SESSION."
+  (let* ((id (plist-get approval :id))
+         (params (plist-get approval :params))
+         (reason (or (alist-get 'reason params) "approve file changes"))
+         (choices '(("accept" . "accept")
+                    ("accept for session" . "acceptForSession")
+                    ("decline" . "decline")
+                    ("cancel turn" . "cancel"))))
+    (codex-ide--render-buffer-approval
+     session
+     id
+     :title "[Approval required]"
+     :details (delq nil
+                    (list
+                     (list :label "Approve file changes" :text reason)
+                     (when-let* ((diff-text
+                                  (codex-ide--approval-file-change-diff-text
+                                   session
+                                   params)))
+                       (codex-ide--mark-approval-file-change-diff-rendered
+                        session
+                        params)
+                       (list :kind 'diff :text diff-text))))
+     :choices choices
+     :params params)))
+
+(defun codex-ide--render-permissions-approval (session approval)
+  "Render queued permissions APPROVAL for SESSION."
+  (let* ((id (plist-get approval :id))
+         (params (plist-get approval :params))
+         (permissions (or (alist-get 'permissions params) '()))
+         (choices '(("grant for turn" . turn)
+                    ("grant for session" . session)
+                    ("decline" . decline))))
+    (codex-ide--render-buffer-approval
+     session
+     id
+     :title "[Approval required]"
+     :details (append
+               (when-let* ((reason (alist-get 'reason params)))
+                 (list (list :label "Reason" :text reason)))
+               (when permissions
+                 (list (list :label "Permissions"
+                             :text (format "%S" permissions)))))
+     :choices choices
+     :params params)))
+
+(defun codex-ide--render-approval-record (session approval)
+  "Render queued APPROVAL for SESSION."
+  (pcase (plist-get approval :kind)
+    ('command
+     (codex-ide--render-command-approval session approval))
+    ('file-change
+     (codex-ide--render-file-change-approval session approval))
+    ('permissions
+     (codex-ide--render-permissions-approval session approval))
+    ('elicitation
+     (codex-ide--render-buffer-elicitation
+      session
+      (plist-get approval :id)
+      (plist-get approval :params)))
+    (kind
+     (error "Unsupported approval kind: %S" kind))))
+
+(defun codex-ide--send-approval-render-failure (session approval err)
+  "Resolve APPROVAL after render ERR prevents showing it."
+  (let ((id (plist-get approval :id))
+        (kind (plist-get approval :kind)))
+    (codex-ide-log-message
+     session
+     "%s approval render failed: %s"
+     (capitalize (symbol-name kind))
+     (error-message-string err))
+    (pcase kind
+      ('permissions
+       (codex-ide--jsonrpc-send-response session id '((permissions . []))))
+      ('elicitation
+       (codex-ide--jsonrpc-send-error session id -32603
+                                      (error-message-string err)))
+      (_
+       (codex-ide--jsonrpc-send-response session id '((decision . "cancel")))))
+    (codex-ide-approvals-data-resolve
+     session
+     id
+     'canceled
+     :decision 'render-failed
+     :result nil
+     :clear-view t)))
+
+(defun codex-ide--render-next-queued-approval (session)
+  "Render SESSION's oldest queued approval, if any."
+  (when-let* ((approval (car (codex-ide-approvals-data-queued-list session))))
+    (condition-case err
+        (codex-ide--render-approval-record session approval)
+      (error
+       (codex-ide--send-approval-render-failure session approval err)
+       (codex-ide--render-next-queued-approval session)))
+    t))
+
 (defun codex-ide--handle-command-approval (&optional session id params)
   "Handle a command approval request for SESSION."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
   (codex-ide--schedule-interactive-request
    session
    (lambda ()
-     (let* ((command (codex-ide--display-command-string
-                      (or (alist-get 'command params) "unknown command")))
-            (choices (codex-ide--command-approval-choices params)))
-       (codex-ide--render-buffer-approval
-        session
-        id
-        'command
-        :title "[Approval required]"
-        :details (delq nil
-                       (list
-                        (list :kind 'command :text command)
-                        (when-let* ((reason (alist-get 'reason params)))
-                          (list :label "Reason" :text reason))))
-        :choices choices
-        :params params)))
+     (codex-ide--enqueue-interactive-request session id 'command params))
    (lambda ()
      (codex-ide-log-message session "Command approval prompt quit; canceling turn")
      (codex-ide--jsonrpc-send-response session id '((decision . "cancel"))))
@@ -5318,29 +5502,7 @@ Mutating the returned table does not update the canonical approval store."
   (codex-ide--schedule-interactive-request
    session
    (lambda ()
-     (let* ((reason (or (alist-get 'reason params) "approve file changes"))
-            (choices '(("accept" . "accept")
-                       ("accept for session" . "acceptForSession")
-                       ("decline" . "decline")
-                       ("cancel turn" . "cancel"))))
-       (codex-ide--render-buffer-approval
-        session
-        id
-        'file-change
-        :title "[Approval required]"
-        :details (delq nil
-                       (list
-                        (list :label "Approve file changes" :text reason)
-                        (when-let* ((diff-text
-                                     (codex-ide--approval-file-change-diff-text
-                                      session
-                                      params)))
-                          (codex-ide--mark-approval-file-change-diff-rendered
-                           session
-                           params)
-                          (list :kind 'diff :text diff-text))))
-        :choices choices
-        :params params)))
+     (codex-ide--enqueue-interactive-request session id 'file-change params))
    (lambda ()
      (codex-ide-log-message session "File-change approval prompt quit; canceling turn")
      (codex-ide--jsonrpc-send-response session id '((decision . "cancel"))))
@@ -5357,23 +5519,7 @@ Mutating the returned table does not update the canonical approval store."
   (codex-ide--schedule-interactive-request
    session
    (lambda ()
-     (let* ((permissions (or (alist-get 'permissions params) '()))
-            (choices '(("grant for turn" . turn)
-                       ("grant for session" . session)
-                       ("decline" . decline))))
-       (codex-ide--render-buffer-approval
-        session
-        id
-        'permissions
-        :title "[Approval required]"
-        :details (append
-                  (when-let* ((reason (alist-get 'reason params)))
-                    (list (list :label "Reason" :text reason)))
-                  (when permissions
-                    (list (list :label "Permissions"
-                                :text (format "%S" permissions)))))
-        :choices choices
-        :params params)))
+     (codex-ide--enqueue-interactive-request session id 'permissions params))
    (lambda ()
      (codex-ide-log-message session "Permissions approval prompt quit; declining")
      (codex-ide--jsonrpc-send-response session id '((permissions . []))))
@@ -5392,13 +5538,13 @@ Mutating the returned table does not update the canonical approval store."
    (lambda ()
      (if (and (fboundp 'codex-ide-mcp-bridge-request-exempt-from-approval-p)
               (codex-ide-mcp-bridge-request-exempt-from-approval-p params))
-         (let ((result '((action . "accept"))))
-           (codex-ide-log-message
-            session
-            "Elicitation request resolved as %s"
-            (alist-get 'action result))
-           (codex-ide--jsonrpc-send-response session id result))
-       (codex-ide--render-buffer-elicitation session id params)))
+       (let ((result '((action . "accept"))))
+         (codex-ide-log-message
+          session
+          "Elicitation request resolved as %s"
+          (alist-get 'action result))
+         (codex-ide--jsonrpc-send-response session id result))
+       (codex-ide--enqueue-interactive-request session id 'elicitation params)))
    (lambda ()
      (codex-ide-log-message session "Elicitation request quit; canceling")
      (codex-ide--jsonrpc-send-response session id '((action . "cancel"))))
@@ -5524,7 +5670,7 @@ compatibility with older app-server payloads and global notifications."
            (when normalized-status
              (codex-ide--set-session-status
               session
-              (codex-ide--status-preserving-pending-approvals
+              (codex-ide--status-preserving-unresolved-approvals
                session
                normalized-status)
               'thread-status-changed)

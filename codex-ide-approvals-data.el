@@ -19,9 +19,6 @@
 (defconst codex-ide-approvals-data--store-key :approvals
   "Session metadata key for approval records.")
 
-(defconst codex-ide-approvals-data--legacy-pending-key :pending-approvals
-  "Legacy session metadata key used before approval records had statuses.")
-
 (defconst codex-ide-approvals-data-heavy-view-keys
   '(:start-marker :status-marker :end-marker :fields)
   "View properties cleared after the transcript no longer needs live state.
@@ -41,51 +38,12 @@ domain decision without carrying these live buffer objects indefinitely.")
        codex-ide-approvals-data--store-key
        (make-hash-table :test 'equal))))
 
-(defun codex-ide-approvals-data--legacy-record (id approval)
-  "Return a lifecycle-aware approval record for legacy APPROVAL keyed by ID."
-  (let ((view nil)
-        (record (copy-sequence approval)))
-    (dolist (key codex-ide-approvals-data-heavy-view-keys)
-      (when (plist-member record key)
-        (setq view (plist-put view key (plist-get record key)))
-        (setq record (plist-put record key nil))))
-    (append
-     (list :id id
-           :status 'pending
-           :turn-id nil
-           :created-at nil
-           :resolved-at nil
-           :decision nil
-           :result nil
-           :view view)
-     record)))
-
-(defun codex-ide-approvals-data-migrate-legacy-pending (session)
-  "Copy SESSION's legacy pending approvals into the canonical approval store.
-
-This keeps live reloads tolerant of buffers that still have `:pending-approvals'
-metadata from an older version.  The legacy metadata is left untouched because
-older loaded functions may still hold references to it until reload completes."
-  (let ((legacy (codex-ide--session-metadata-get
-                 session
-                 codex-ide-approvals-data--legacy-pending-key)))
-    (when (hash-table-p legacy)
-      (let ((store (codex-ide-approvals-data--store session)))
-        (maphash
-         (lambda (id approval)
-           (unless (gethash id store)
-             (puthash id
-                      (codex-ide-approvals-data--legacy-record id approval)
-                      store)))
-         legacy)))))
-
 (defun codex-ide-approvals-data-store (&optional session)
   "Return SESSION's canonical approval store.
 
 The returned hash table is the low-level backing store.  Prefer query and
 mutation helpers in this module when possible."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
-  (codex-ide-approvals-data-migrate-legacy-pending session)
   (codex-ide-approvals-data--store session))
 
 (defun codex-ide-approvals-data-get (session id)
@@ -93,17 +51,19 @@ mutation helpers in this module when possible."
   (gethash id (codex-ide-approvals-data-store session)))
 
 (cl-defun codex-ide-approvals-data-add
-    (session id kind params &key turn-id view metadata created-at)
-  "Add a pending approval record for SESSION request ID.
+    (session id kind params &key (status 'queued) turn-id view metadata created-at)
+  "Add an unresolved approval record for SESSION request ID.
 
 KIND identifies the approval family.  PARAMS are the protocol request params.
 TURN-ID should be captured at request creation time rather than inferred during
-resolution.  VIEW contains render-only state such as markers and input field
-state.  METADATA is appended for future non-view extension fields."
+resolution.  STATUS is normally `queued' until the record is rendered, then
+`active' while its buttons are live.  VIEW contains render-only state such as
+markers and input field state.  METADATA is appended for future non-view
+extension fields."
   (let ((record (append
                  (list :id id
                        :kind kind
-                       :status 'pending
+                       :status status
                        :params params
                        :turn-id turn-id
                        :created-at (or created-at (current-time))
@@ -114,6 +74,17 @@ state.  METADATA is appended for future non-view extension fields."
                  metadata)))
     (puthash id record (codex-ide-approvals-data-store session))
     record))
+
+(cl-defun codex-ide-approvals-data-activate (session id &key view)
+  "Mark SESSION approval ID as active and attach rendered VIEW state."
+  (let ((approval (codex-ide-approvals-data-get session id)))
+    (when approval
+      (setq approval
+            (plist-put
+             (plist-put approval :status 'active)
+             :view view))
+      (puthash id approval (codex-ide-approvals-data-store session))
+      approval)))
 
 (defun codex-ide-approvals-data-view (approval)
   "Return APPROVAL's render-only view plist."
@@ -169,13 +140,23 @@ stable progression independent of hash-table iteration order."
            :turn-id turn-id
            :kind kind)))
 
-(defun codex-ide-approvals-data-pending-list (session)
-  "Return SESSION approvals whose lifecycle status is `pending'."
-  (codex-ide-approvals-data-list session :status 'pending))
+(defun codex-ide-approvals-data-queued-list (session)
+  "Return SESSION approvals waiting to be rendered."
+  (codex-ide-approvals-data-list session :status 'queued))
 
-(defun codex-ide-approvals-data-pending-p (session)
+(defun codex-ide-approvals-data-active-list (session)
+  "Return SESSION approvals whose transcript controls are live."
+  (codex-ide-approvals-data-list session :status 'active))
+
+(defun codex-ide-approvals-data-unresolved-list (session)
+  "Return SESSION approvals that still need a user decision."
+  (append (codex-ide-approvals-data-active-list session)
+          (codex-ide-approvals-data-queued-list session)))
+
+(defun codex-ide-approvals-data-unresolved-p (session)
   "Return non-nil when SESSION has unresolved approvals."
-  (> (codex-ide-approvals-data-count session :status 'pending) 0))
+  (or (> (codex-ide-approvals-data-count session :status 'active) 0)
+      (> (codex-ide-approvals-data-count session :status 'queued) 0)))
 
 (defun codex-ide-approvals-data--clear-view (approval)
   "Return APPROVAL with heavyweight live view state cleared.

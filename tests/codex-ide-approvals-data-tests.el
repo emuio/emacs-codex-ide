@@ -10,7 +10,7 @@
 (require 'codex-ide-test-fixtures)
 (require 'codex-ide-approvals-data)
 
-(ert-deftest codex-ide-approvals-data-tracks-pending-and-resolved-by-turn ()
+(ert-deftest codex-ide-approvals-data-tracks-queued-active-and-resolved-by-turn ()
   (let ((session (make-codex-ide-session)))
     (codex-ide-approvals-data-add
      session
@@ -35,9 +35,23 @@
                    '(1 2)))
     (should (= (codex-ide-approvals-data-count
                 session
-                :status 'pending
+                :status 'queued
                 :turn-id "turn-1")
                2))
+    (codex-ide-approvals-data-activate
+     session
+     1
+     :view (list :start-marker (make-marker)))
+    (should (= (codex-ide-approvals-data-count
+                session
+                :status 'active
+                :turn-id "turn-1")
+               1))
+    (should (= (codex-ide-approvals-data-count
+                session
+                :status 'queued
+                :turn-id "turn-1")
+               1))
     (codex-ide-approvals-data-resolve
      session
      1
@@ -48,7 +62,7 @@
     (should (= (codex-ide-approvals-data-count session :turn-id "turn-1") 2))
     (should (= (codex-ide-approvals-data-count
                 session
-                :status 'pending
+                :status 'queued
                 :turn-id "turn-1")
                1))
     (let ((approval (codex-ide-approvals-data-get session 1)))
@@ -76,6 +90,11 @@
     (should (codex-ide-approvals-data-view-get
              (codex-ide-approvals-data-get session 7)
              :start-marker))
+    (codex-ide-approvals-data-activate
+     session
+     7
+     :view (codex-ide-approvals-data-view
+            (codex-ide-approvals-data-get session 7)))
     (codex-ide-approvals-data-resolve
      session
      7
