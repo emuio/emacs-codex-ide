@@ -24,6 +24,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'seq)
 (require 'codex-ide-approvals-data)
 (require 'codex-ide-core)
 (require 'codex-ide-diff-data)
@@ -50,6 +51,10 @@
   (make-sparse-keymap)
   "Keymap for `codex-ide-session-prompt-minor-mode'.")
 
+(defvar codex-ide-session-approval-minor-mode-map
+  (make-sparse-keymap)
+  "Keymap for `codex-ide-session-approval-minor-mode'.")
+
 (define-key codex-ide-session-mode-map (kbd "C-c C-c") #'codex-ide-interrupt)
 (define-key codex-ide-session-mode-map (kbd "C-c RET") #'codex-ide-submit)
 (define-key codex-ide-session-mode-map (kbd "C-c C-d") #'codex-ide-session-diff-open)
@@ -65,6 +70,25 @@
 (define-key codex-ide-session-prompt-minor-mode-map (kbd "<backspace>") #'codex-ide-delete-backward-or-remove-attached-image)
 (define-key codex-ide-session-prompt-minor-mode-map (kbd "<delete>") #'codex-ide-delete-forward-or-remove-attached-image)
 (define-key codex-ide-session-prompt-minor-mode-map (kbd "C-d") #'codex-ide-delete-forward-or-remove-attached-image)
+(dotimes (index 9)
+  (define-key codex-ide-session-approval-minor-mode-map
+              (number-to-string (1+ index))
+              #'codex-ide-session-approval-dispatch))
+(define-key codex-ide-session-approval-minor-mode-map
+            [remap self-insert-command]
+            #'codex-ide-session-approval-blocked-input)
+(define-key codex-ide-session-approval-minor-mode-map
+            [remap codex-ide-submit]
+            #'codex-ide-session-approval-blocked-input)
+(define-key codex-ide-session-approval-minor-mode-map
+            [remap codex-ide-interrupt]
+            #'codex-ide-session-approval-blocked-input)
+(define-key codex-ide-session-approval-minor-mode-map
+            [remap codex-ide-previous-prompt-history]
+            #'codex-ide-session-approval-blocked-input)
+(define-key codex-ide-session-approval-minor-mode-map
+            [remap codex-ide-next-prompt-history]
+            #'codex-ide-session-approval-blocked-input)
 
 (defvar-local codex-ide-session-mode--last-point nil
   "Last observed point used for transcript tail-follow navigation tracking.")
@@ -79,6 +103,56 @@
   "Minor mode enabled only while point is in the active Codex prompt."
   :lighter " Prompt"
   :keymap codex-ide-session-prompt-minor-mode-map)
+
+(define-minor-mode codex-ide-session-approval-minor-mode
+  "Minor mode enabled while a Codex approval is pending."
+  :lighter " Approval"
+  :keymap codex-ide-session-approval-minor-mode-map)
+
+(defun codex-ide-session-mode--active-approval (&optional session)
+  "Return SESSION's active approval record, if any."
+  (seq-find
+   (lambda (approval)
+     (not (eq (plist-get approval :kind) 'elicitation)))
+   (and session (codex-ide-approvals-data-active-list session))))
+
+(defun codex-ide-session-approval--actions (&optional session)
+  "Return active keyboard approval actions for SESSION."
+  (when-let* ((approval (codex-ide-session-mode--active-approval session)))
+    (codex-ide-approvals-data-view-get approval :key-actions)))
+
+(defun codex-ide-session-approval-blocked-input ()
+  "Notify that normal input is blocked by a pending Codex approval."
+  (interactive)
+  (message "Resolve or cancel the pending Codex approval first"))
+
+(defun codex-ide-session-approval-dispatch ()
+  "Dispatch the numeric approval action for the pressed key."
+  (interactive)
+  (let* ((event (event-basic-type last-command-event))
+         (session (and (boundp 'codex-ide--session) codex-ide--session))
+         (digit (and (characterp event)
+                     (>= event ?1)
+                     (<= event ?9)
+                     (- event ?0)))
+         (action (and digit
+                      (nth (1- digit)
+                           (codex-ide-session-approval--actions session)))))
+    (if-let* ((function (and digit (plist-get action :function))))
+        (funcall function)
+      (codex-ide-session-approval-blocked-input))))
+
+(defun codex-ide-session-mode--approval-pending-p (&optional session)
+  "Return non-nil when SESSION has pending approval work."
+  (and (codex-ide-session-mode--active-approval session) t))
+
+(defun codex-ide-session-mode-sync-approval-minor-mode (&optional session)
+  "Enable or disable `codex-ide-session-approval-minor-mode' for SESSION."
+  (setq session (or session (and (boundp 'codex-ide--session) codex-ide--session)))
+  (when (and session (derived-mode-p 'codex-ide-session-mode))
+    (let ((pending (codex-ide-session-mode--approval-pending-p session)))
+      (unless (eq pending codex-ide-session-approval-minor-mode)
+        (codex-ide-session-approval-minor-mode (if pending 1 -1))))))
 
 (defun codex-ide--point-in-active-prompt-p (&optional session pos)
   "Return non-nil when POS is inside SESSION's active prompt region."
@@ -113,7 +187,8 @@
       (when (and (codex-ide--point-in-active-prompt-p session)
                  (> (point) input-end))
         (goto-char input-end)))
-    (let ((inside (codex-ide--point-in-active-prompt-p session)))
+    (let ((inside (and (not (codex-ide-session-mode--approval-pending-p session))
+                       (codex-ide--point-in-active-prompt-p session))))
       (unless (eq inside codex-ide-session-prompt-minor-mode)
         (codex-ide-session-prompt-minor-mode (if inside 1 -1))))))
 
@@ -265,7 +340,7 @@ follow state."
   (setq session (or session (and (boundp 'codex-ide--session) codex-ide--session)))
   (let (start)
     (dolist (approval (and session
-                           (codex-ide-approvals-data-pending-list session)))
+                           (codex-ide-approvals-data-active-list session)))
       (let ((marker (codex-ide-approvals-data-view-get approval :start-marker)))
         (when (and (markerp marker)
                    (eq (marker-buffer marker) (current-buffer)))
@@ -395,6 +470,10 @@ adds these bindings:
             nil
             t)
   (add-hook 'post-command-hook #'codex-ide--sync-prompt-minor-mode nil t)
+  (add-hook 'post-command-hook
+            #'codex-ide-session-mode-sync-approval-minor-mode
+            nil
+            t)
   (add-hook 'post-command-hook
             #'codex-ide-session-mode--track-tail-follow-navigation
             nil

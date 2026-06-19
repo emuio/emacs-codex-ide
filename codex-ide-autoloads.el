@@ -42,6 +42,11 @@ When set to \"off\", Codex IDE leaves `serviceTier' unset.")
 "Image detail setting used when submitting local image files.")
 (custom-autoload 'codex-ide-image-detail "codex-ide" t)
 (put 'codex-ide-image-detail 'safe-local-variable (lambda (value) (member value '("auto" "low" "high" "original"))))
+(defvar codex-ide-image-thumbnail-max-height 96
+"Maximum height in pixels for local image thumbnail previews.
+Set to nil to disable thumbnail previews.")
+(custom-autoload 'codex-ide-image-thumbnail-max-height "codex-ide" t)
+(put 'codex-ide-image-thumbnail-max-height 'safe-local-variable (lambda (value) (or (null value) (and (integerp value) (> value 0)))))
 (defvar codex-ide-prompt-placeholder-text "Tell Codex what to do..."
 "Placeholder text displayed in an empty idle Codex prompt.")
 (custom-autoload 'codex-ide-prompt-placeholder-text "codex-ide" t)

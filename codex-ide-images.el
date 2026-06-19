@@ -9,14 +9,14 @@
 ;;; Code:
 
 (require 'subr-x)
+(require 'codex-ide-session)
 
 (declare-function codex-ide-session-buffer "codex-ide-core" (session))
 (declare-function codex-ide--add-pending-local-image "codex-ide-transcript"
-                  (session path))
+                  (session path &optional temporary))
 (declare-function codex-ide--ensure-input-prompt "codex-ide-transcript"
                   (&optional session initial-text))
 (declare-function codex-ide--ensure-session-for-current-project "codex-ide-session" ())
-(declare-function codex-ide--session-for-current-project "codex-ide-session" ())
 
 (defconst codex-ide--clipboard-png-class
   (format "%cclass PNGf%c" #x00ab #x00bb)
@@ -87,13 +87,12 @@
                            details)))))
       (kill-buffer buffer))))
 
-(defun codex-ide--attach-image (path)
+(defun codex-ide--attach-image (path &optional temporary)
   "Attach local image PATH to the current Codex prompt."
-  (let ((session (or (codex-ide--session-for-current-project)
-                     (codex-ide--ensure-session-for-current-project))))
+  (let ((session (codex-ide--ensure-session-for-current-project)))
     (with-current-buffer (codex-ide-session-buffer session)
       (codex-ide--ensure-input-prompt session)
-      (codex-ide--add-pending-local-image session path))
+      (codex-ide--add-pending-local-image session path temporary))
     (message "Attached image: %s" (file-name-nondirectory path))))
 
 ;;;###autoload
@@ -106,7 +105,7 @@
 (defun codex-ide-submit-clipboard-image ()
   "Attach the macOS clipboard image to the current Codex prompt."
   (interactive)
-  (codex-ide--attach-image (codex-ide--save-clipboard-image)))
+  (codex-ide--attach-image (codex-ide--save-clipboard-image) t))
 
 (provide 'codex-ide-images)
 

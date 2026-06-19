@@ -620,6 +620,723 @@
     (should (= (buffer-size) 4096))
     (should-not buffer-undo-list)))
 
+(ert-deftest codex-ide-append-to-buffer-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "running"))
+          (original (symbol-function 'codex-ide-renderer-append-to-buffer))
+          contexts)
+      (setq-local codex-ide--session session)
+      (cl-letf (((symbol-function 'codex-ide-renderer-append-to-buffer)
+                 (lambda (&rest args)
+                   (prog1 (apply original args)
+                     (push codex-ide--transcript-render-context contexts)))))
+        (codex-ide--append-to-buffer (current-buffer) "hello\n"))
+      (let ((context (car contexts)))
+        (should (codex-ide-transcript-render-context-p context))
+        (should (eq (codex-ide-transcript-render-context-session context)
+                    session))
+        (should (eq (codex-ide-transcript-render-context-buffer context)
+                    (current-buffer)))
+        (should (= (marker-position
+                    (codex-ide-transcript-render-context-start-marker context))
+                   (point-min)))
+        (should (= (marker-position
+                    (codex-ide-transcript-render-context-end-marker context))
+                   (point-max)))))))
+
+(ert-deftest codex-ide-render-transaction-finalizer-clears-deferred-markdown-from-active-prompt ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (insert "history\n")
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle")))
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "draft")
+      (let ((prompt-start
+             (marker-position
+              (codex-ide-session-input-prompt-start-marker session))))
+        (let ((inhibit-read-only t))
+          (add-text-properties
+           prompt-start
+           (point-max)
+           '(invisible codex-ide-renderer-markdown-deferred
+                       codex-ide-markdown-deferred t)))
+        (should (text-property-any
+                 prompt-start
+                 (point-max)
+                 'codex-ide-markdown-deferred
+                 t))
+        (codex-ide--append-to-buffer (current-buffer) "assistant\n")
+        (setq prompt-start
+              (marker-position
+               (codex-ide-session-input-prompt-start-marker session)))
+        (should-not (text-property-any
+                     prompt-start
+                     (point-max)
+                     'invisible
+                     'codex-ide-renderer-markdown-deferred))
+        (should-not (text-property-any
+                     prompt-start
+                     (point-max)
+                     'codex-ide-markdown-deferred
+                     t))))))
+
+(ert-deftest codex-ide-render-transaction-finalizer-preserves-non-renderer-invisibility ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (insert "history\n")
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle")))
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "draft")
+      (let* ((input-start
+              (marker-position
+               (codex-ide-session-input-start-marker session)))
+             (hidden-start (copy-marker input-start))
+             (hidden-end (copy-marker (1+ input-start) t)))
+        (let ((inhibit-read-only t))
+          (add-text-properties
+           (marker-position hidden-start)
+           (marker-position hidden-end)
+           '(invisible codex-ide-test-owned)))
+        (codex-ide--with-transcript-render-transaction
+            (session (current-buffer))
+          nil)
+        (unwind-protect
+            (should (text-property-any
+                     (marker-position hidden-start)
+                     (marker-position hidden-end)
+                     'invisible
+                     'codex-ide-test-owned))
+          (set-marker hidden-start nil)
+          (set-marker hidden-end nil))))))
+
+(ert-deftest codex-ide-render-transaction-finalizer-cleans-running-input-tail ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "running"
+                    :current-turn-id "turn-1"
+                    :item-states (make-hash-table :test 'equal))))
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "steer draft")
+      (codex-ide--set-queued-prompts session '("queued prompt"))
+      (codex-ide--refresh-running-input-display session)
+      (let ((list-start
+             (marker-position
+              (codex-ide--session-metadata-get
+               session
+               :running-input-list-delete-start-marker)))
+            (prompt-start
+             (marker-position
+              (codex-ide--session-metadata-get
+               session
+               :input-display-start-marker))))
+        (let ((inhibit-read-only t))
+          (add-text-properties
+           list-start
+           prompt-start
+           '(invisible codex-ide-renderer-markdown-deferred
+                       codex-ide-markdown-deferred t)))
+        (codex-ide--with-transcript-render-transaction
+            (session (current-buffer))
+          nil)
+        (should-not (text-property-any
+                     list-start
+                     prompt-start
+                     'codex-ide-markdown-deferred
+                     t))
+        (should (string-match-p
+                 (rx "Queued turns:" "\n  1. queued prompt")
+                 (buffer-string)))
+        (should (equal (codex-ide--current-input session)
+                       "steer draft"))))))
+
+(ert-deftest codex-ide-render-transaction-finalizer-does-not-rebuild-running-input-list ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "running"
+                    :current-turn-id "turn-1"
+                    :item-states (make-hash-table :test 'equal))))
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "steer draft")
+      (codex-ide--set-queued-prompts session '("queued prompt"))
+      (should-not (string-match-p "Queued turns:" (buffer-string)))
+      (codex-ide--with-transcript-render-transaction
+          (session (current-buffer))
+        nil)
+      (should-not (string-match-p "Queued turns:" (buffer-string)))
+      (should-not (codex-ide--running-input-list-valid-p session))
+      (should (equal (codex-ide--current-input session)
+                     "steer draft")))))
+
+(ert-deftest codex-ide-render-transaction-finalizer-repairs-running-active-boundary ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "running"
+                    :current-turn-id "turn-1"
+                    :item-states (make-hash-table :test 'equal))))
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "steer draft")
+      (codex-ide--set-queued-prompts session '("queued prompt"))
+      (codex-ide--refresh-running-input-display session)
+      (should (codex-ide--running-input-list-valid-p session))
+      (let ((boundary
+             (codex-ide--session-metadata-get
+              session
+              :running-input-list-boundary-marker))
+            (running-end
+             (codex-ide--session-metadata-get
+              session
+              :running-input-list-end-marker))
+            (active-boundary
+             (codex-ide--session-metadata-get
+              session
+              :active-input-boundary-marker)))
+        (set-marker active-boundary (marker-position boundary))
+        (codex-ide--with-transcript-render-transaction
+            (session (current-buffer))
+          nil)
+        (should (= (marker-position active-boundary)
+                   (marker-position running-end)))))))
+
+(ert-deftest codex-ide-render-transaction-finalizer-repairs-prompt-padding ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (buffer-enable-undo)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle")))
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "draft")
+      (let ((input-end (codex-ide--input-end-position session)))
+        (let ((inhibit-read-only t))
+          (delete-region input-end (point-max)))
+        (should (string-suffix-p "> draft" (buffer-string)))
+        (setq buffer-undo-list nil)
+        (codex-ide--with-transcript-render-transaction
+            (session (current-buffer))
+          nil)
+        (should (string-suffix-p "> draft\n\n" (buffer-string)))
+        (should-not buffer-undo-list)))))
+
+(ert-deftest codex-ide-render-transaction-finalizer-preserves-folded-result-overlay ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle"
+                    :item-states (make-hash-table :test 'equal))))
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "submitted prompt")
+      (codex-ide--begin-turn-display session)
+      (codex-ide--render-item-start
+       session
+       '((id . "call-1")
+         (type . "commandExecution")
+         (command . "echo hi")
+         (cwd . "/tmp")))
+      (codex-ide--store-command-output-delta
+       session
+       "call-1"
+       "hello\nworld\n")
+      (codex-ide--render-command-output-state session "call-1")
+      (codex-ide--render-item-completion
+       session
+       '((id . "call-1")
+         (type . "commandExecution")
+         (status . "completed")
+         (exitCode . 0)))
+      (goto-char (point-min))
+      (search-forward "output:")
+      (let ((overlay (get-char-property
+                      (match-beginning 0)
+                      codex-ide-item-result-overlay-property)))
+        (should (overlayp overlay))
+        (should (overlay-get overlay 'invisible))
+        (codex-ide--with-transcript-render-transaction
+            (session (current-buffer))
+          nil)
+        (should (overlay-get overlay 'invisible))
+        (should (overlay-get overlay :folded))))))
+
+(ert-deftest codex-ide-render-transaction-finalizes-nested-different-buffer-targets ()
+  (let ((outer-buffer (generate-new-buffer " *codex-test-outer*"))
+        (inner-buffer (generate-new-buffer " *codex-test-inner*"))
+        outer-session
+        inner-session)
+    (unwind-protect
+        (progn
+          (with-current-buffer outer-buffer
+            (codex-ide-session-mode)
+            (setq outer-session
+                  (make-codex-ide-session
+                   :buffer outer-buffer
+                   :status "idle"))
+            (setq-local codex-ide--session outer-session)
+            (codex-ide--insert-input-prompt outer-session "outer"))
+          (with-current-buffer inner-buffer
+            (codex-ide-session-mode)
+            (setq inner-session
+                  (make-codex-ide-session
+                   :buffer inner-buffer
+                   :status "idle"))
+            (setq-local codex-ide--session inner-session)
+            (codex-ide--insert-input-prompt inner-session "inner")
+            (let ((prompt-start
+                   (marker-position
+                    (codex-ide-session-input-prompt-start-marker
+                     inner-session))))
+              (let ((inhibit-read-only t))
+                (add-text-properties
+                 prompt-start
+                 (point-max)
+                 '(invisible codex-ide-renderer-markdown-deferred
+                             codex-ide-markdown-deferred t)))))
+          (with-current-buffer outer-buffer
+            (codex-ide--with-transcript-render-transaction
+                (outer-session outer-buffer)
+              (with-current-buffer inner-buffer
+                (codex-ide--with-transcript-render-transaction
+                    (inner-session inner-buffer)
+                  nil))
+              (with-current-buffer inner-buffer
+                (should-not (text-property-any
+                             (point-min)
+                             (point-max)
+                             'codex-ide-markdown-deferred
+                             t))))))
+      (when (buffer-live-p outer-buffer)
+        (kill-buffer outer-buffer))
+      (when (buffer-live-p inner-buffer)
+        (kill-buffer inner-buffer)))))
+
+(ert-deftest codex-ide-delete-active-input-prompt-does-not-repair-stale-prompt ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (insert "history")
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle")))
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "draft")
+      (codex-ide--delete-active-input-prompt session)
+      (should-not (codex-ide--input-prompt-active-p session))
+      (should-not (string-match-p "> draft" (buffer-string)))
+      (should-not (text-property-any
+                   (point-min)
+                   (point-max)
+                   'face
+                   'codex-ide-user-prompt-face)))))
+
+(ert-deftest codex-ide-freeze-active-input-prompt-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "running"))
+          (original
+           (symbol-function 'codex-ide-renderer-replace-prompt-with-steering))
+          contexts)
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "steer draft")
+      (cl-letf (((symbol-function
+                  'codex-ide-renderer-replace-prompt-with-steering)
+                 (lambda (&rest args)
+                   (push codex-ide--transcript-render-context contexts)
+                   (apply original args))))
+        (codex-ide--freeze-active-input-prompt
+         session
+         "Context: foo.el"
+         'steering))
+      (should (codex-ide-transcript-render-context-p (car contexts)))
+      (should-not (codex-ide--input-prompt-active-p session))
+      (should-not (codex-ide--session-metadata-get
+                   session
+                   :active-input-boundary-marker))
+      (should (string-match-p "steer draft" (buffer-string))))))
+
+(ert-deftest codex-ide-replace-current-input-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle"))
+          (original (symbol-function 'codex-ide-renderer-replace-region))
+          contexts)
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "draft")
+      (cl-letf (((symbol-function 'codex-ide-renderer-replace-region)
+                 (lambda (&rest args)
+                   (push codex-ide--transcript-render-context contexts)
+                   (apply original args))))
+        (codex-ide--replace-current-input session "replacement"))
+      (should (codex-ide-transcript-render-context-p (car contexts)))
+      (should (equal (codex-ide--current-input session) "replacement")))))
+
+(ert-deftest codex-ide-restored-user-message-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle"))
+          (original
+           (symbol-function 'codex-ide-renderer-insert-restored-user-message))
+          contexts)
+      (setq-local codex-ide--session session)
+      (cl-letf (((symbol-function
+                  'codex-ide-renderer-insert-restored-user-message)
+                 (lambda (&rest args)
+                   (push codex-ide--transcript-render-context contexts)
+                   (apply original args))))
+        (codex-ide--append-restored-user-message session "restored prompt"))
+      (should (codex-ide-transcript-render-context-p (car contexts)))
+      (should (string-match-p "restored prompt" (buffer-string))))))
+
+(ert-deftest codex-ide-reset-session-buffer-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :directory default-directory
+                    :status "idle"))
+          (original
+           (symbol-function 'codex-ide-renderer-insert-session-header))
+          contexts)
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "draft")
+      (cl-letf (((symbol-function 'codex-ide-renderer-insert-session-header)
+                 (lambda (&rest args)
+                   (push codex-ide--transcript-render-context contexts)
+                   (apply original args))))
+        (codex-ide--reset-session-buffer session))
+      (should (codex-ide-transcript-render-context-p (car contexts)))
+      (should-not (codex-ide--input-prompt-active-p session))
+      (should-not (text-property-any
+                   (point-min)
+                   (point-max)
+                   'face
+                   'codex-ide-user-prompt-face))
+      (should (string-match-p "Project:" (buffer-string))))))
+
+(ert-deftest codex-ide-interactive-request-post-processing-stays-in-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle"))
+          (original (symbol-function 'codex-ide--make-region-writable))
+          contexts)
+      (setq-local codex-ide--session session)
+      (codex-ide-approvals-data-add
+       session
+       "request-1"
+       'elicitation
+       nil)
+      (cl-letf (((symbol-function 'codex-ide--make-region-writable)
+                 (lambda (&rest args)
+                   (push codex-ide--transcript-render-context contexts)
+                   (apply original args))))
+        (codex-ide--render-interactive-request
+         session
+         "request-1"
+         :title "[Input required]"
+         :notify-message "Codex input required in %s"
+         :render-body
+         (lambda ()
+           (let ((start (copy-marker (point))))
+             (codex-ide-renderer-insert-read-only "value\n")
+             (list :writable-ranges
+                   (list (cons start (copy-marker (point) t))))))))
+      (should (codex-ide-transcript-render-context-p (car contexts)))
+      (should (string-match-p "\\[Input required\\]" (buffer-string))))))
+
+(ert-deftest codex-ide-approval-file-change-diff-widget-binds-render-transaction ()
+  (let ((codex-ide-diff-auto-display-policy nil))
+    (with-temp-buffer
+      (codex-ide-session-mode)
+      (let ((session (make-codex-ide-session
+                      :buffer (current-buffer)
+                      :directory default-directory
+                      :status "approval"))
+            (original
+             (symbol-function 'codex-ide-renderer-insert-item-result-header))
+            contexts)
+        (setq-local codex-ide--session session)
+        (cl-letf (((symbol-function
+                    'codex-ide-renderer-insert-item-result-header)
+                   (lambda (&rest args)
+                     (push codex-ide--transcript-render-context contexts)
+                     (apply original args))))
+          (codex-ide--insert-approval-file-change-diff-widget
+           session
+           "file-change-1"
+           "diff --git a/foo.el b/foo.el\n--- a/foo.el\n+++ b/foo.el\n@@ -1 +1 @@\n-old\n+new\n"))
+        (should (codex-ide-transcript-render-context-p (car contexts)))
+        (should (string-match-p "diff:" (buffer-string)))))))
+
+(ert-deftest codex-ide-renderer-deferred-markdown-timer-uses-transcript-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "running"
+                    :current-message-item-id "msg"))
+          (original
+           (symbol-function 'codex-ide-renderer-clear-streaming-deferred-markdown))
+          contexts)
+      (setq-local codex-ide--session session)
+      (insert "partial table")
+      (setf (codex-ide-session-current-message-start-marker session)
+            (copy-marker (point-min)))
+      (let ((inhibit-read-only t))
+        (add-text-properties
+         (point-min)
+         (point-max)
+         '(invisible codex-ide-renderer-markdown-deferred
+                     codex-ide-markdown-deferred t)))
+      (cl-letf (((symbol-function
+                  'codex-ide-renderer-clear-streaming-deferred-markdown)
+                 (lambda (&rest args)
+                   (push codex-ide--transcript-render-context contexts)
+                   (apply original args))))
+        (codex-ide-renderer--reveal-streaming-deferred-markdown
+         (current-buffer)))
+      (should (codex-ide-transcript-render-context-p (car contexts)))
+      (should-not (text-property-any
+                   (point-min)
+                   (point-max)
+                   'codex-ide-markdown-deferred
+                   t)))))
+
+(ert-deftest codex-ide-status-block-append-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "running"))
+          (original (symbol-function 'codex-ide-renderer-append-to-buffer))
+          contexts)
+      (setq-local codex-ide--session session)
+      (cl-letf (((symbol-function 'codex-ide-renderer-append-to-buffer)
+                 (lambda (&rest args)
+                   (prog1 (apply original args)
+                     (push codex-ide--transcript-render-context contexts)))))
+        (codex-ide--append-status-block-to-buffer
+         (current-buffer)
+         "* Ran command"
+         '("$ just test")))
+      (let* ((context (car contexts))
+             (start (marker-position
+                     (codex-ide-transcript-render-context-start-marker
+                      context)))
+             (end (marker-position
+                   (codex-ide-transcript-render-context-end-marker context))))
+        (should (codex-ide-transcript-render-context-p context))
+        (should (eq (codex-ide-transcript-render-context-session context)
+                    session))
+        (should (< start end))
+        (should (string-match-p
+                 "\\* Ran command"
+                 (buffer-substring-no-properties start end)))))))
+
+(ert-deftest codex-ide-metadata-line-append-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "running"))
+          (original (symbol-function 'codex-ide-renderer-append-to-buffer))
+          contexts)
+      (setq-local codex-ide--session session)
+      (cl-letf (((symbol-function 'codex-ide-renderer-append-to-buffer)
+                 (lambda (&rest args)
+                   (prog1 (apply original args)
+                     (push codex-ide--transcript-render-context contexts)))))
+        (codex-ide--append-metadata-line-to-buffer
+         (current-buffer)
+         "Usage updated: tokens +14.7k"
+         'codex-ide-usage-notification-face))
+      (let* ((context (car contexts))
+             (start (marker-position
+                     (codex-ide-transcript-render-context-start-marker
+                      context)))
+             (end (marker-position
+                   (codex-ide-transcript-render-context-end-marker context))))
+        (should (codex-ide-transcript-render-context-p context))
+        (should (eq (codex-ide-transcript-render-context-session context)
+                    session))
+        (should (< start end))
+        (should (string-match-p
+                 "Usage updated"
+                 (buffer-substring-no-properties start end)))))))
+
+(ert-deftest codex-ide-insert-agent-text-at-marker-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (insert "prefix\n")
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "running"))
+          (marker (copy-marker (point-max) t))
+          (original (symbol-function 'codex-ide-renderer-append-to-buffer))
+          contexts)
+      (setq-local codex-ide--session session)
+      (cl-letf (((symbol-function 'codex-ide-renderer-append-to-buffer)
+                 (lambda (&rest args)
+                   (prog1 (apply original args)
+                     (push codex-ide--transcript-render-context contexts)))))
+        (codex-ide--insert-agent-text-at-marker
+         (current-buffer)
+         marker
+         "streamed\n"))
+      (let ((context (car contexts)))
+        (should (codex-ide-transcript-render-context-p context))
+        (should (eq (codex-ide-transcript-render-context-session context)
+                    session))
+        (should (= (marker-position
+                    (codex-ide-transcript-render-context-end-marker context))
+                   (marker-position marker)))
+        (should (equal (buffer-string) "prefix\nstreamed\n"))))))
+
+(ert-deftest codex-ide-streaming-markdown-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (insert "Use `code` here.\n")
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "running"
+                    :current-message-item-id "msg"))
+          (original
+           (symbol-function 'codex-ide-renderer-render-markdown-streaming))
+          context)
+      (setq-local codex-ide--session session)
+      (setf (codex-ide-session-current-message-start-marker session)
+            (copy-marker (point-min)))
+      (codex-ide--session-metadata-put
+       session
+       :agent-message-stream-render-start-marker
+       (copy-marker (point-min)))
+      (cl-letf (((symbol-function 'codex-ide-renderer-render-markdown-streaming)
+                 (lambda (&rest args)
+                   (setq context codex-ide--transcript-render-context)
+                   (apply original args))))
+        (codex-ide--render-current-agent-message-markdown-streaming
+         session
+         "msg"))
+      (should (codex-ide-transcript-render-context-p context))
+      (should (eq (codex-ide-transcript-render-context-session context)
+                  session))
+      (should (= (marker-position
+                  (codex-ide-transcript-render-context-start-marker context))
+                 (point-min)))
+      (should (= (marker-position
+                  (codex-ide-transcript-render-context-end-marker context))
+                 (point-max))))))
+
+(ert-deftest codex-ide-shell-command-detail-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "running"))
+          (original
+           (symbol-function 'codex-ide-renderer-insert-shell-command-detail))
+          context)
+      (setq-local codex-ide--session session)
+      (cl-letf (((symbol-function 'codex-ide-renderer-insert-shell-command-detail)
+                 (lambda (&rest args)
+                   (setq context codex-ide--transcript-render-context)
+                   (apply original args))))
+        (codex-ide--append-shell-command-detail
+         (current-buffer)
+         "just test"))
+      (should (codex-ide-transcript-render-context-p context))
+      (should (eq (codex-ide-transcript-render-context-session context)
+                  session))
+      (should (= (marker-position
+                  (codex-ide-transcript-render-context-start-marker context))
+                 (point-min)))
+      (should (= (marker-position
+                  (codex-ide-transcript-render-context-end-marker context))
+                 (point-max))))))
+
+(ert-deftest codex-ide-reasoning-summary-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (insert "* Reasoning: draft\n")
+    (let* ((session (make-codex-ide-session
+                     :buffer (current-buffer)
+                     :status "running"))
+           (start-marker (copy-marker (point-min)))
+           (end-marker (copy-marker (point-max) t))
+           (original-delete-region (symbol-function 'delete-region))
+           context)
+      (setq-local codex-ide--session session)
+      (cl-letf (((symbol-function 'delete-region)
+                 (lambda (&rest args)
+                   (setq context codex-ide--transcript-render-context)
+                   (apply original-delete-region args))))
+        (codex-ide--render-reasoning-summary-entry
+         (current-buffer)
+         "updated"
+         start-marker
+         end-marker))
+      (should (codex-ide-transcript-render-context-p context))
+      (should (eq (codex-ide-transcript-render-context-session context)
+                  session))
+      (should (= (marker-position
+                  (codex-ide-transcript-render-context-start-marker context))
+                 (point-min)))
+      (should (= (marker-position
+                  (codex-ide-transcript-render-context-end-marker context))
+                 (marker-position end-marker)))
+      (should (equal (buffer-string) "* Reasoning: updated\n")))))
+
+(ert-deftest codex-ide-approval-resolution-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (insert "[Approval required]\n\n")
+    (let* ((session (make-codex-ide-session
+                     :buffer (current-buffer)
+                     :status "running"))
+           (start-marker (copy-marker (point-min)))
+           (status-marker (copy-marker (point-max) t))
+           (end-marker (copy-marker (point-max) t))
+           (approval (list :view
+                           (list :start-marker start-marker
+                                 :status-marker status-marker
+                                 :end-marker end-marker)))
+           (original
+            (symbol-function 'codex-ide-renderer-insert-approval-resolution))
+           context)
+      (setq-local codex-ide--session session)
+      (cl-letf (((symbol-function 'codex-ide-renderer-insert-approval-resolution)
+                 (lambda (&rest args)
+                   (setq context codex-ide--transcript-render-context)
+                   (apply original args))))
+        (codex-ide--mark-approval-resolved approval "accept"))
+      (should (codex-ide-transcript-render-context-p context))
+      (should (eq (codex-ide-transcript-render-context-session context)
+                  session))
+      (should (= (marker-position
+                  (codex-ide-transcript-render-context-start-marker context))
+                 (point-min)))
+      (should (= (marker-position
+                  (codex-ide-transcript-render-context-end-marker context))
+                 (marker-position end-marker)))
+      (should (string-match-p "Selected: accept" (buffer-string))))))
+
 (ert-deftest codex-ide-renderer-append-to-buffer-inserts-at-position-and-restores-point ()
   (with-temp-buffer
     (codex-ide-session-mode)
@@ -883,6 +1600,56 @@
       (setq-local codex-ide--session session)
       (codex-ide--insert-input-prompt session nil)
       (should-not buffer-undo-list))))
+
+(ert-deftest codex-ide-insert-input-prompt-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle"))
+          (original (symbol-function 'codex-ide-renderer-insert-input-prompt))
+          contexts)
+      (setq-local codex-ide--session session)
+      (cl-letf (((symbol-function 'codex-ide-renderer-insert-input-prompt)
+                 (lambda (&rest args)
+                   (push codex-ide--transcript-render-context contexts)
+                   (apply original args))))
+        (codex-ide--insert-input-prompt session nil))
+      (let ((context (car contexts)))
+        (should (codex-ide-transcript-render-context-p context))
+        (should (eq (codex-ide-transcript-render-context-session context)
+                    session))
+        (should (eq (codex-ide-transcript-render-context-buffer context)
+                    (current-buffer)))
+        (should (< (marker-position
+                    (codex-ide-transcript-render-context-start-marker context))
+                   (marker-position
+                    (codex-ide-transcript-render-context-end-marker context))))))))
+
+(ert-deftest codex-ide-delete-active-input-prompt-binds-render-transaction ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle"))
+          (original-delete-region (symbol-function 'delete-region))
+          contexts)
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session "draft")
+      (cl-letf (((symbol-function 'delete-region)
+                 (lambda (&rest args)
+                   (push codex-ide--transcript-render-context contexts)
+                   (apply original-delete-region args))))
+        (codex-ide--delete-active-input-prompt session))
+      (let ((context (car contexts)))
+        (should (codex-ide-transcript-render-context-p context))
+        (should (eq (codex-ide-transcript-render-context-session context)
+                    session))
+        (should (eq (codex-ide-transcript-render-context-buffer context)
+                    (current-buffer)))
+        (should (= (marker-position
+                    (codex-ide-transcript-render-context-end-marker context))
+                   (point-max)))))))
 
 (ert-deftest codex-ide-begin-turn-display-clears-submitted-prompt-undo ()
   (with-temp-buffer
@@ -1380,6 +2147,116 @@
       (should-not (codex-ide--session-metadata-get
                    session
                    :usage-transcript-pending-kinds)))))
+
+(ert-deftest codex-ide-finish-turn-reveals-deferred-streaming-markdown-before-prompt ()
+  (let ((codex-ide-renderer-markdown-streaming-defer-delay 999))
+    (with-temp-buffer
+      (codex-ide-session-mode)
+      (let ((session (make-codex-ide-session
+                      :buffer (current-buffer)
+                      :status "running"
+                      :current-turn-id "turn-1"
+                      :current-message-item-id "msg"
+                      :output-prefix-inserted t
+                      :item-states (make-hash-table :test 'equal))))
+        (setq-local codex-ide--session session)
+        (unwind-protect
+            (progn
+              (insert "| Name | Age |\n| --- | ---: |\n| Bob")
+              (setf (codex-ide-session-current-message-start-marker session)
+                    (copy-marker (point-min)))
+              (let ((stream-marker (copy-marker (point-min))))
+                (codex-ide--session-metadata-put
+                 session
+                 :agent-message-stream-render-start-marker
+                 stream-marker)
+                (codex-ide--render-current-agent-message-markdown-streaming
+                 session
+                 "msg")
+                (should (text-property-any
+                         (point-min)
+                         (point-max)
+                         'codex-ide-markdown-deferred
+                         t))
+                (codex-ide--finish-turn session)
+                (should-not (marker-buffer stream-marker)))
+              (should-not (codex-ide--session-metadata-get
+                           session
+                           :agent-message-stream-render-start-marker))
+              (should-not (text-property-any
+                           (point-min)
+                           (point-max)
+                           'codex-ide-markdown-deferred
+                           t))
+              (let ((prompt-start
+                     (marker-position
+                      (codex-ide-session-input-prompt-start-marker session))))
+                (should (equal (codex-ide-test--prompt-prefix-at-line) "> "))
+                (should-not (text-property-any
+                             prompt-start
+                             (point-max)
+                             'invisible
+                             'codex-ide-renderer-markdown-deferred))
+                (should-not (text-property-any
+                             prompt-start
+                             (point-max)
+                             'codex-ide-markdown-deferred
+                             t))))
+          (codex-ide-renderer-reveal-streaming-deferred-markdown
+           (point-min)
+           (point-max)))))))
+
+(ert-deftest codex-ide-turn-completed-notification-closes-deferred-streaming-markdown ()
+  (let ((codex-ide-renderer-markdown-streaming-defer-delay 999)
+        (codex-ide-renderer-render-markdown-during-streaming t))
+    (with-temp-buffer
+      (codex-ide-session-mode)
+      (let ((session (make-codex-ide-session
+                      :buffer (current-buffer)
+                      :status "idle"
+                      :item-states (make-hash-table :test 'equal))))
+        (setq-local codex-ide--session session)
+        (unwind-protect
+            (progn
+              (codex-ide--insert-input-prompt session "submitted prompt")
+              (codex-ide--handle-notification
+               session
+               '((method . "turn/started")
+                 (params . ((turn . ((id . "turn-1")))))))
+              (codex-ide--handle-notification
+               session
+               '((method . "item/agentMessage/delta")
+                 (params . ((itemId . "msg-1")
+                            (delta . "| Name | Age |\n| --- | ---: |\n| Bob")))))
+              (should (text-property-any
+                       (point-min)
+                       (point-max)
+                       'codex-ide-markdown-deferred
+                       t))
+              (codex-ide--handle-notification
+               session
+               '((method . "turn/completed")
+                 (params . ((turn . ((id . "turn-1")))))))
+              (should-not (codex-ide--session-metadata-get
+                           session
+                           :agent-message-stream-render-start-marker))
+              (should-not (text-property-any
+                           (point-min)
+                           (point-max)
+                           'codex-ide-markdown-deferred
+                           t))
+              (let ((prompt-start
+                     (marker-position
+                      (codex-ide-session-input-prompt-start-marker session))))
+                (should (equal (codex-ide-test--prompt-prefix-at-line) "> "))
+                (should-not (text-property-any
+                             prompt-start
+                             (point-max)
+                             'invisible
+                             'codex-ide-renderer-markdown-deferred))))
+          (codex-ide-renderer-reveal-streaming-deferred-markdown
+           (point-min)
+           (point-max)))))))
 
 (ert-deftest codex-ide-append-to-buffer-separates-idle-active-prompt-from-output ()
   (with-temp-buffer
@@ -2065,9 +2942,8 @@
                                 (buffer-string)))))))
 
 (ert-deftest codex-ide-collab-agent-message-open-button-opens-agent-buffer ()
-  (let ((buffer-name "*codex-sub-agent[codex-ide:a]*"))
-    (when-let* ((buffer (get-buffer buffer-name)))
-      (kill-buffer buffer))
+  (let ((thread-id "thread-agent-a")
+        buffer-name)
     (unwind-protect
         (with-temp-buffer
           (codex-ide-session-mode)
@@ -2076,6 +2952,10 @@
                           :buffer (current-buffer)
                           :status "idle"
                           :item-states (make-hash-table :test 'equal))))
+            (setq buffer-name
+                  (codex-ide--collab-agent-buffer-name session thread-id))
+            (when-let* ((buffer (get-buffer buffer-name)))
+              (kill-buffer buffer))
             (setq-local codex-ide--session session)
             (codex-ide--insert-input-prompt session "submitted prompt")
             (codex-ide--begin-turn-display session)
@@ -2085,17 +2965,17 @@
                    (cons 'type "collabAgentToolCall")
                    (cons 'tool "wait")
                    (cons 'status "inProgress")
-                   (cons 'receiverThreadIds ["thread-agent-a"])))
+                   (cons 'receiverThreadIds (vector thread-id))))
             (codex-ide--render-item-completion
              session
              (list (cons 'id "call-1")
                    (cons 'type "collabAgentToolCall")
                    (cons 'tool "wait")
                    (cons 'status "completed")
-                   (cons 'receiverThreadIds ["thread-agent-a"])
+                   (cons 'receiverThreadIds (vector thread-id))
                    (cons 'agentsStates
                          (list
-                          (cons "thread-agent-a"
+                          (cons thread-id
                                 (list (cons 'status "completed")
                                       (cons 'message
                                             "Agent-specific final message")))))))
@@ -2113,7 +2993,8 @@
               (should (string-match-p "Parent item: call-1" (buffer-string)))
               (should (string-match-p "Agent-specific final message"
                                       (buffer-string))))))
-      (when-let* ((buffer (get-buffer buffer-name)))
+      (when-let* (((stringp buffer-name))
+                  (buffer (get-buffer buffer-name)))
         (kill-buffer buffer)))))
 
 (ert-deftest codex-ide-command-output-face-extends-lines ()
@@ -4326,6 +5207,35 @@
 							text))
 						     messages))))))))
 
+  (ert-deftest codex-ide-reported-workspace-write-cwd-root-match-is-normalized ()
+    (let* ((project-dir (codex-ide-test--make-temp-project))
+           (session (codex-ide-session :directory project-dir))
+           (submitted
+            `((sandboxPolicy
+               . ((type . "workspaceWrite")
+                  (writableRoots . [,project-dir])))))
+           (reported
+            '((sandboxPolicy
+               . ((type . "workspaceWrite")
+                  (writableRoots)
+                  (networkAccess . :json-false)
+                  (excludeTmpdirEnvVar . :json-false)
+                  (excludeSlashTmp . :json-false))))))
+      (should-not
+       (codex-ide--turn-config-mismatches submitted reported session))))
+
+  (ert-deftest codex-ide-reported-sandbox-type-mismatch-is-not-normalized-away ()
+    (let* ((project-dir (codex-ide-test--make-temp-project))
+           (session (codex-ide-session :directory project-dir))
+           (submitted
+            `((sandboxPolicy
+               . ((type . "workspaceWrite")
+                  (writableRoots . [,project-dir])))))
+           (reported
+            '((sandboxPolicy . ((type . "readOnly"))))))
+      (should
+       (codex-ide--turn-config-mismatches submitted reported session))))
+
   (ert-deftest codex-ide-header-line-uses-updated-compact-format ()
     (let* ((project-dir (codex-ide-test--make-temp-project))
            (file-path
@@ -5081,7 +5991,10 @@
 						     "Seeking approval..."))
 				      (should (string-match-p "Codex:Approval"
 							      (codex-ide-renderer-mode-line-status session)))
-				      (should (= (hash-table-count (codex-ide--pending-approvals session)) 1))
+				      (should (= (codex-ide-approvals-data-count
+						  session
+						  :status 'active)
+						 1))
 				      (with-current-buffer (codex-ide-session-buffer session)
 					(let ((text (buffer-string))
 					      (separator (string-trim-right
@@ -5093,18 +6006,18 @@
 							   "Run the following command\\?\n\n"
 							   "    git status\n\n"
 							   "Reason: inspect worktree\n"
-							   "\\[accept\\]\n"
-							   "\\[accept for session\\]\n"
-							   "\\[accept and allow prefix (git status)\\]\n"
-							   "\\[decline\\]\n"
-							   "\\[cancel turn\\]\n\n")
+							   "\\[1 - accept\\]\n"
+							   "\\[2 - accept for session\\]\n"
+							   "\\[3 - accept and allow prefix (git status)\\]\n"
+							   "\\[4 - decline\\]\n"
+							   "\\[5 - cancel turn\\]\n\n")
 						   text))
 					  (should (string-match-p "Reason: inspect worktree" text))
 					  (should-not (string-match-p "Codex approval required" text))
 					  (should-not (string-match-p "Proposed prefix:" text))
 					  (should-not (string-match-p "Status: Pending" text))
 					  (should-not (string-match-p "Choose:" text))
-					  (should (string-match-p "\\[accept for session\\]" text)))
+					  (should (string-match-p "\\[2 - accept for session\\]" text)))
 					(goto-char (point-min))
 					(search-forward (string-trim-right
 							 (codex-ide-renderer-output-separator-string)))
@@ -5120,7 +6033,7 @@
 					(should (eq (get-text-property (match-beginning 0) 'face)
 						    'codex-ide-item-summary-face))
 					(goto-char (point-min))
-					(search-forward "[accept for session]")
+					(search-forward "[2 - accept for session]")
 					(backward-char 1)
 					(push-button))
 				      (let* ((sent (codex-ide-test-process-sent-strings process))
@@ -5131,20 +6044,69 @@
 					(should (equal (alist-get 'id payload) 42))
 					(should (equal (alist-get 'decision (alist-get 'result payload))
 						       "acceptForSession")))
-				      (should (= (hash-table-count (codex-ide--pending-approvals session)) 0))
+				      (should-not (codex-ide-approvals-data-unresolved-p session))
 				      (should (string= (codex-ide-session-status session) "running"))
 				      (with-current-buffer (codex-ide-session-buffer session)
-					(should (string-match-p "\\[cancel turn\\]\n\nSelected: accept for session\n[^ \n]"
+					(should (string-match-p "\\[5 - cancel turn\\]\n\nSelected: accept for session\n[^ \n]"
 								(concat (buffer-string) "x")))
 					(goto-char (point-max))
 					(search-backward "Selected:")
 					(should (eq (get-text-property (point) 'face)
 						    'codex-ide-approval-label-face))
 					(goto-char (point-min))
-					(search-forward "[accept for session]")
+					(search-forward "[2 - accept for session]")
 					(backward-char 1)
 					(should-not (button-at (point))))
 				      (should (= (length (codex-ide-test-process-sent-strings process)) 1)))))))
+
+  (ert-deftest codex-ide-command-approval-minor-mode-dispatches-numbered-action-and-blocks-input ()
+    (let ((project-dir (codex-ide-test--make-temp-project))
+          (message-text nil))
+      (codex-ide-test-with-fixture project-dir
+				   (codex-ide-test-with-fake-processes
+				    (let* ((session (codex-ide--create-process-session))
+					   (process (codex-ide-session-process session)))
+				      (setf (codex-ide-session-current-turn-id session) "turn-approval-key"
+					    (codex-ide-session-status session) "running")
+				      (codex-ide--insert-input-prompt session "draft")
+				      (cl-letf (((symbol-function 'run-at-time)
+						 (lambda (_time _repeat function)
+						   (funcall function)))
+						((symbol-function 'codex-ide-display-buffer)
+						 (lambda (_buffer &optional _action) (selected-window)))
+						((symbol-function 'message)
+						 (lambda (format-string &rest args)
+						   (setq message-text
+							 (apply #'format format-string args)))))
+					(codex-ide--handle-command-approval
+					 session
+					 42
+					 '((command . "git status")
+					   (proposedExecpolicyAmendment . ["git" "status"]))))
+				      (with-current-buffer (codex-ide-session-buffer session)
+					(codex-ide-session-mode-sync-approval-minor-mode session)
+					(codex-ide--sync-prompt-minor-mode session)
+					(should codex-ide-session-approval-minor-mode)
+					(should-not codex-ide-session-prompt-minor-mode)
+					(should (eq (key-binding (kbd "2"))
+						    #'codex-ide-session-approval-dispatch))
+					(let ((last-command-event ?x))
+					  (call-interactively
+					   #'codex-ide-session-approval-blocked-input))
+					(should (equal message-text
+						       "Resolve or cancel the pending Codex approval first"))
+					(let ((last-command-event ?2))
+					  (call-interactively
+					   #'codex-ide-session-approval-dispatch))
+					(should-not codex-ide-session-approval-minor-mode))
+				      (let* ((sent (codex-ide-test-process-sent-strings process))
+					     (payload (json-parse-string (car sent)
+									 :object-type 'alist
+									 :array-type 'list)))
+					(should (= (length sent) 1))
+					(should (equal (alist-get 'id payload) 42))
+					(should (equal (alist-get 'decision (alist-get 'result payload))
+						       "acceptForSession"))))))))
 
   (ert-deftest codex-ide-command-approval-navigation-within-block-preserves-tail-follow ()
     (save-window-excursion
@@ -5206,8 +6168,9 @@
 					     (reason . "inspect worktree"))))
 					(setq approval-start
 					      (marker-position
-					       (plist-get (gethash 42 (codex-ide--pending-approvals session))
-							  :start-marker)))
+					       (codex-ide-approvals-data-view-get
+						(codex-ide-approvals-data-get session 42)
+						:start-marker)))
 					(set-window-buffer window buffer)
 					(with-selected-window window
 					  (goto-char (point-max))
@@ -5275,7 +6238,7 @@
 					 '((command . "git status"))))
 				      (with-current-buffer (codex-ide-session-buffer session)
 					(goto-char (point-min))
-					(search-forward "[accept]")
+					(search-forward "[1 - accept]")
 					(backward-char 1)
 					(push-button)
 					(codex-ide--replace-current-input session "steer while approved command runs")
@@ -5299,7 +6262,7 @@
 						    (codex-ide-session-input-prompt-start-marker session)))
 					(should (equal (codex-ide-test--prompt-prefix-at-line) "> ")))))))))
 
-(ert-deftest codex-ide-command-approval-resolving-one-keeps-other-buttons-active ()
+(ert-deftest codex-ide-command-approval-renders-queued-approvals-one-at-a-time ()
   (let ((project-dir (codex-ide-test--make-temp-project)))
     (codex-ide-test-with-fixture project-dir
 				 (codex-ide-test-with-fake-processes
@@ -5323,19 +6286,33 @@
 				       session
 				       43
 				       '((command . "pwd"))))
-				    (should (= (hash-table-count (codex-ide--pending-approvals session)) 2))
+				    (should (= (codex-ide-approvals-data-count session :status 'active) 1))
+				    (should (= (codex-ide-approvals-data-count session :status 'queued) 1))
+				    (should (equal (codex-ide-test--input-placeholder-text session)
+						   "Seeking approval (1 queued)..."))
 				    (with-current-buffer (codex-ide-session-buffer session)
 				      (goto-char (point-min))
 				      (search-forward "git status")
-				      (search-forward "[accept]")
+				      (search-forward "[1 - accept]")
 				      (backward-char 1)
 				      (push-button)
 				      (goto-char (point-min))
 				      (search-forward "pwd")
-				      (search-forward "[accept]")
+				      (search-forward "[1 - accept]")
 				      (backward-char 1)
-				      (should (button-at (point))))
-				    (should (= (hash-table-count (codex-ide--pending-approvals session)) 1))
+				      (should (button-at (point)))
+				      (should codex-ide-session-approval-minor-mode)
+				      (should (equal
+					       (mapcar
+						(lambda (action)
+						  (plist-get action :label))
+						(codex-ide-session-approval--actions session))
+					       '("accept"
+						 "accept for session"
+						 "decline"
+						 "cancel turn"))))
+				    (should (= (codex-ide-approvals-data-count session :status 'active) 1))
+				    (should (= (codex-ide-approvals-data-count session :status 'queued) 0))
 				    (should (string= (codex-ide-session-status session) "approval"))
 				    (let* ((sent (codex-ide-test-process-sent-strings process))
 					   (payloads (mapcar (lambda (text)
@@ -5350,7 +6327,7 @@
 				      (should (member 42 ids))
 				      (should-not (member 43 ids))))))))
 
-(ert-deftest codex-ide-thread-status-running-preserves-pending-approval-status ()
+(ert-deftest codex-ide-thread-status-running-preserves-unresolved-approval-status ()
   (let ((project-dir (codex-ide-test--make-temp-project)))
     (codex-ide-test-with-fixture project-dir
 				 (codex-ide-test-with-fake-processes
@@ -5374,7 +6351,7 @@
 				     session
 				     '((method . "thread/status/changed")
 				       (params . ((thread . ((status . "running")))))))
-				    (should (= (hash-table-count (codex-ide--pending-approvals session)) 1))
+				    (should (codex-ide-approvals-data-unresolved-p session))
 				    (should (string= (codex-ide-session-status session) "approval")))))))
 
 (ert-deftest codex-ide-command-approval-does-not-display-nonvisible-buffer-when-disabled ()
@@ -5402,7 +6379,7 @@
 				       44
 				       '((command . "sort"))))
 				    (should (string= (codex-ide-session-status session) "approval"))
-				    (should (= (hash-table-count (codex-ide--pending-approvals session)) 1))
+				    (should (codex-ide-approvals-data-unresolved-p session))
 				    (should (equal message-text
 						   (format "Codex approval required in %s"
 							   (buffer-name (codex-ide-session-buffer session)))))
@@ -5462,6 +6439,12 @@
 				       45
 				       '((itemId . "file-change-1")
 					 (reason . "edit foo.txt")))
+				      (let ((state (codex-ide--item-state
+						    session
+						    "file-change-1")))
+					(should (plist-get state :approval-diff-rendered))
+					(should-not (plist-get state :item-result-overlay))
+					(should-not (plist-get state :item-result-anchor-marker)))
 				      (with-current-buffer (codex-ide-session-buffer session)
 					(let ((text (buffer-string)))
 					  (should (string-match-p "Approve file changes: edit foo\\.txt" text))
@@ -5469,7 +6452,7 @@
 					  (should (< (string-match-p "Proposed changes:" text)
 						     (string-match-p "diff: foo\\.txt (\\+1/-1, 6 lines) \\[fold\\] \\[open diff\\]" text)))
 					  (should (< (string-match-p "\\[open diff\\]" text)
-						     (string-match-p "\\[accept\\]" text)))
+						     (string-match-p "\\[1 - accept\\]" text)))
 					  (should (string-match-p "diff --git a/foo\\.txt b/foo\\.txt" text))
 					  (should (string-match-p "-old" text))
 					  (should (string-match-p "+new" text)))
@@ -5492,9 +6475,27 @@
 						       (codex-ide-diff-buffer-name-for-session
 							(codex-ide-session-buffer session))))
 					(goto-char (point-min))
-					(search-forward "[accept]")
+					(search-forward "[1 - accept]")
 					(backward-char 1)
-					(button-activate (button-at (point)))))
+					(button-activate (button-at (point)))
+					(goto-char (point-min))
+					(search-forward "[fold]")
+					(backward-char 1)
+					(should (button-at (point)))
+					(search-forward "[open diff]")
+					(backward-char 1)
+					(should (button-at (point)))
+					(setq opened-diff nil
+					      opened-diff-buffer-name nil)
+					(button-activate (button-at (point)))
+					(should (equal opened-diff expected-diff))
+					(should (equal opened-diff-buffer-name
+						       (codex-ide-diff-buffer-name-for-session
+							(codex-ide-session-buffer session))))
+					(goto-char (point-min))
+					(search-forward "[1 - accept]")
+					(backward-char 1)
+					(should-not (button-at (point)))))
 				    (let* ((payloads
 					    (mapcar (lambda (json)
 						      (json-parse-string json
@@ -5952,16 +6953,16 @@
 					  (should (equal (buffer-name diff-buffer) diff-buffer-name))
 					  (with-current-buffer (codex-ide-session-buffer session)
 					    (let ((text (buffer-string)))
-					      (should (string-match-p "\\[accept\\]" text))
-					      (should (string-match-p "\\[accept for session\\]" text))
-					      (should (string-match-p "\\[decline\\]" text))
-					      (should (string-match-p "\\[cancel turn\\]" text))))
+					      (should (string-match-p "\\[1 - accept\\]" text))
+					      (should (string-match-p "\\[2 - accept for session\\]" text))
+					      (should (string-match-p "\\[3 - decline\\]" text))
+					      (should (string-match-p "\\[4 - cancel turn\\]" text))))
 					  (with-current-buffer diff-buffer
 					    (let ((text (buffer-string)))
-					      (should-not (string-match-p "\\[accept\\]" text))
-					      (should-not (string-match-p "\\[accept for session\\]" text))
-					      (should-not (string-match-p "\\[decline\\]" text))
-					      (should-not (string-match-p "\\[cancel turn\\]" text))
+					      (should-not (string-match-p "\\[1 - accept\\]" text))
+					      (should-not (string-match-p "\\[2 - accept for session\\]" text))
+					      (should-not (string-match-p "\\[3 - decline\\]" text))
+					      (should-not (string-match-p "\\[4 - cancel turn\\]" text))
 					      (should (string-match-p
 						       (regexp-quote "foo.txt +1 -1")
 						       text))
@@ -6021,7 +7022,7 @@
 					     (diff-pos (string-match-p
 							"diff: foo\\.txt"
 							text))
-					     (accept-pos (string-match-p "\\[accept\\]" text))
+					     (accept-pos (string-match-p "\\[1 - accept\\]" text))
 					     (prompt-pos (string-match-p
 							  "\n> "
 							  text
@@ -6032,10 +7033,10 @@
 					(should (< diff-pos accept-pos))
 					(should (< accept-pos prompt-pos)))
 				      (goto-char (point-min))
-				      (search-forward "[accept]")
+				      (search-forward "[1 - accept]")
 				      (should-not (eq (get-char-property (match-beginning 0) 'field)
 						      'codex-ide-active-input))
-				      (search-forward "[cancel turn]")
+				      (search-forward "[4 - cancel turn]")
 				      (should-not (eq (get-char-property (match-beginning 0) 'field)
 						      'codex-ide-active-input))
 				      (search-forward "> ")
@@ -6048,7 +7049,8 @@
   (let ((project-dir (codex-ide-test--make-temp-project)))
     (codex-ide-test-with-fixture project-dir
 				 (codex-ide-test-with-fake-processes
-				  (let ((session (codex-ide--create-process-session)))
+				  (let ((session (codex-ide--create-process-session))
+					render-context)
 				    (when (codex-ide--input-prompt-active-p session)
 				      (codex-ide--delete-active-input-prompt session))
 				    (setf (codex-ide-session-current-turn-id session) "turn-local-insert"
@@ -6066,10 +7068,21 @@
 					(goto-char boundary)
 					(codex-ide-renderer-insert-read-only "Parent block\n")
 					(codex-ide--with-local-transcript-insertion
+					  (setq render-context
+						codex-ide--transcript-render-context)
 					  (codex-ide--ensure-item-result-block
 					   session
 					   "nested-command")
 					  (codex-ide-renderer-insert-read-only "[after]\n")))
+				      (should (codex-ide-transcript-render-context-p
+					       render-context))
+				      (should
+				       (> (marker-position
+					   (codex-ide-transcript-render-context-end-marker
+					    render-context))
+					  (marker-position
+					   (codex-ide-transcript-render-context-start-marker
+					    render-context))))
 				      (goto-char (point-min))
 				      (search-forward "command output:")
 				      (should-not (eq (get-char-property (match-beginning 0) 'field)
@@ -6265,7 +7278,7 @@
 				      (should (string-match-p "\\[Approval required\\]\n\nReason: run a tool"
 							      (buffer-string)))
 				      (goto-char (point-min))
-				      (search-forward "[decline]")
+				      (search-forward "[3 - decline]")
 				      (backward-char 1)
 				      (push-button))
 				    (let* ((payloads

@@ -164,7 +164,10 @@
 				    (should (equal message-text
 						   (format "Codex input required in %s"
 							   (buffer-name (codex-ide-session-buffer session)))))
-				    (should (= (hash-table-count (codex-ide--pending-approvals session)) 1))
+				    (should (= (codex-ide-approvals-data-count
+						session
+						:status 'active)
+					       1))
 				    (with-current-buffer (codex-ide-session-buffer session)
 				      (let ((text (buffer-string)))
 					(should (string-match-p (regexp-quote "[Input required]") text))
@@ -172,8 +175,10 @@
 					(should (string-match-p "\\[submit\\]" text))
 					(should (string-match-p "\\[decline\\]" text))
 					(should (string-match-p "\\[cancel\\]" text))))
-				    (let* ((approval (gethash 17 (codex-ide--pending-approvals session)))
-					   (fields (plist-get approval :fields))
+				    (let* ((approval (codex-ide-approvals-data-get session 17))
+					   (fields (codex-ide-approvals-data-view-get
+						    approval
+						    :fields))
 					   (name-field (seq-find (lambda (field)
 								   (equal (plist-get field :name) 'name))
 								 fields))

@@ -215,7 +215,10 @@
 					 (permissions . (((tool . "emacs_get_buffer_diagnostics"))
 							 ((server . "editor")))))))
 				    (should (string= (codex-ide-session-status session) "approval"))
-				    (should (= (hash-table-count (codex-ide--pending-approvals session)) 1))
+				    (should (= (codex-ide-approvals-data-count
+						session
+						:status 'active)
+					       1))
 				    (should (equal message-text
 						   (format "Codex approval required in %s"
 							   (buffer-name (codex-ide-session-buffer session)))))
@@ -485,7 +488,24 @@
                            (end-line . 3)))))
             (should (= (alist-get 'start-line result) 2))
             (should (= (alist-get 'end-line result) 3))
+            (should (eq (alist-get 'text-truncated result) :json-false))
             (should (equal (alist-get 'text result) "two\nthree"))))
+      (kill-buffer buffer))))
+
+(ert-deftest codex-ide-mcp-bridge-get-buffer-slice-caps-large-result ()
+  (let ((buffer (generate-new-buffer " *codex-ide-large-slice*"))
+        (codex-ide-mcp-bridge-buffer-slice-text-limit 7))
+    (unwind-protect
+        (with-current-buffer buffer
+          (insert "one\ntwo\nthree\nfour\n")
+          (let ((result (codex-ide-mcp-bridge--tool-call--get_buffer_slice
+                         `((buffer . ,(buffer-name buffer))
+                           (start-line . 1)
+                           (end-line . 4)))))
+            (should (= (alist-get 'start-line result) 1))
+            (should (= (alist-get 'end-line result) 4))
+            (should (alist-get 'text-truncated result))
+            (should (equal (alist-get 'text result) "one\ntwo"))))
       (kill-buffer buffer))))
 
 (ert-deftest codex-ide-mcp-bridge-get-region-text-returns-active-region ()

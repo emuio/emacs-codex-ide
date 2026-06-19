@@ -40,6 +40,58 @@
                       (point-max)))))
     nil))
 
+(defun codex-ide-images-test--emacs-program ()
+  "Return the Emacs executable used by the test suite."
+  (or (getenv "RUN_TESTS_EMACS_EXECUTABLE")
+      (expand-file-name invocation-name invocation-directory)))
+
+(defmacro codex-ide-images-test--with-session (status &rest body)
+  "Run BODY in a temporary session buffer with STATUS."
+  (declare (indent 1) (debug t))
+  `(with-temp-buffer
+     (codex-ide-session-mode)
+     (let ((session (make-codex-ide-session
+                     :buffer (current-buffer)
+                     :status ,status
+                     :item-states (make-hash-table :test 'equal))))
+       (setq-local codex-ide--session session)
+       ,@body)))
+
+(defun codex-ide-images-test--assert-render-context (context session)
+  "Assert CONTEXT owns SESSION's current buffer."
+  (should (codex-ide-transcript-render-context-p context))
+  (should (eq (codex-ide-transcript-render-context-session context)
+              session))
+  (should (eq (codex-ide-transcript-render-context-buffer context)
+              (current-buffer))))
+
+(ert-deftest codex-ide-images-module-loads-runtime-dependencies ()
+  (let ((buffer (generate-new-buffer " *codex-ide-images-module-load*")))
+    (unwind-protect
+        (let ((exit-code
+               (call-process
+                (codex-ide-images-test--emacs-program)
+                nil
+                buffer
+                nil
+                "-Q"
+                "--batch"
+                "-L"
+                codex-ide-test--root-directory
+                "--eval"
+                (concat
+                 "(progn"
+                 " (setq load-prefer-newer t)"
+                 " (require 'codex-ide-images)"
+                 " (unless (and"
+                 "          (fboundp 'codex-ide--ensure-session-for-current-project)"
+                 "          (fboundp 'codex-ide--ensure-input-prompt)"
+                 "          (fboundp 'codex-ide--add-pending-local-image))"
+                 "   (kill-emacs 1)))"))))
+          (should
+           (equal exit-code 0)))
+      (kill-buffer buffer))))
+
 (ert-deftest codex-ide-submit-image-attaches-local-image-without-submitting ()
   (let* ((project-dir (codex-ide-test--make-temp-project))
          (image-path (codex-ide-test--make-project-file
@@ -70,6 +122,26 @@
                        session
                        :pending-local-images-overlay)
                       'before-string)))))))))
+
+(ert-deftest codex-ide-submit-image-ensures-session-before-attaching ()
+  (let* ((project-dir (codex-ide-test--make-temp-project))
+         (image-path (codex-ide-test--make-project-file
+                      project-dir
+                      "screenshot.png"
+                      "fake-png")))
+    (codex-ide-test-with-fixture project-dir
+      (codex-ide-test-with-fake-processes
+        (let ((session (codex-ide--create-process-session)))
+          (with-current-buffer (codex-ide-session-buffer session)
+            (cl-letf (((symbol-function 'codex-ide--session-for-current-project)
+                       (lambda ()
+                         (ert-fail
+                          "Attaching an image should ensure a session directly")))
+                      ((symbol-function 'codex-ide--ensure-session-for-current-project)
+                       (lambda () session)))
+              (codex-ide-submit-image image-path))
+            (should (equal (codex-ide--pending-local-images session)
+                           (list image-path)))))))))
 
 (ert-deftest codex-ide-pending-local-images-display-includes-thumbnail ()
   (let* ((project-dir (codex-ide-test--make-temp-project))
@@ -122,6 +194,29 @@
                        session
                        :pending-local-images-overlay)
                       'before-string)))))))))
+
+(ert-deftest codex-ide-delete-backward-removes-temporary-clipboard-image-file ()
+  (let* ((project-dir (codex-ide-test--make-temp-project))
+         (image-path (codex-ide-test--make-project-file
+                      project-dir
+                      "clipboard.png"
+                      "fake-png")))
+    (codex-ide-test-with-fixture project-dir
+      (codex-ide-test-with-fake-processes
+        (let ((session (codex-ide--create-process-session)))
+          (with-current-buffer (codex-ide-session-buffer session)
+            (codex-ide--insert-input-prompt session nil)
+            (cl-letf (((symbol-function 'codex-ide--save-clipboard-image)
+                       (lambda () image-path))
+                      ((symbol-function 'codex-ide--session-for-current-project)
+                       (lambda () session))
+                      ((symbol-function 'codex-ide--ensure-session-for-current-project)
+                       (lambda () session)))
+              (codex-ide-submit-clipboard-image))
+            (goto-char (codex-ide--input-end-position session))
+            (codex-ide-delete-backward-or-remove-attached-image)
+            (should-not (codex-ide--pending-local-images session))
+            (should-not (file-exists-p image-path))))))))
 
 (ert-deftest codex-ide-delete-backward-removes-last-attached-image ()
   (let* ((project-dir (codex-ide-test--make-temp-project))
@@ -227,6 +322,224 @@
             (codex-ide-delete-backward-or-remove-attached-image)
             (should (equal (codex-ide--current-input session)
                            "ab"))))))))
+
+(ert-deftest codex-ide-reset-session-buffer-clears-pending-local-images ()
+  (let* ((project-dir (codex-ide-test--make-temp-project))
+         (image-path (codex-ide-test--make-project-file
+                      project-dir
+                      "clipboard.png"
+                      "fake-png")))
+    (codex-ide-test-with-fixture project-dir
+      (codex-ide-test-with-fake-processes
+        (let ((session (codex-ide--create-process-session)))
+          (with-current-buffer (codex-ide-session-buffer session)
+            (codex-ide--insert-input-prompt session nil)
+            (cl-letf (((symbol-function 'codex-ide--save-clipboard-image)
+                       (lambda () image-path))
+                      ((symbol-function 'codex-ide--session-for-current-project)
+                       (lambda () session))
+                      ((symbol-function 'codex-ide--ensure-session-for-current-project)
+                       (lambda () session)))
+              (codex-ide-submit-clipboard-image))
+            (codex-ide--reset-session-buffer session)
+            (should-not (codex-ide--pending-local-images session))
+            (should-not (codex-ide--session-metadata-get
+                         session
+                         :pending-local-images-overlay))
+            (should-not (file-exists-p image-path))))))))
+
+(ert-deftest codex-ide-submit-prompt-deletes-temporary-clipboard-image-after-send ()
+  (let* ((project-dir (codex-ide-test--make-temp-project))
+         (image-path (codex-ide-test--make-project-file
+                      project-dir
+                      "clipboard.png"
+                      "fake-png")))
+    (codex-ide-test-with-fixture project-dir
+      (codex-ide-test-with-fake-processes
+        (let ((session (codex-ide--create-process-session))
+              submitted)
+          (setf (codex-ide-session-thread-id session) "thread-clipboard-image")
+          (with-current-buffer (codex-ide-session-buffer session)
+            (codex-ide--insert-input-prompt session "describe")
+            (cl-letf (((symbol-function 'codex-ide--save-clipboard-image)
+                       (lambda () image-path))
+                      ((symbol-function 'codex-ide--session-for-current-project)
+                       (lambda () session))
+                      ((symbol-function 'codex-ide--ensure-session-for-current-project)
+                       (lambda () session))
+                      ((symbol-function 'codex-ide--request-sync)
+                       (lambda (_session method params)
+                         (when (equal method "turn/start")
+                           (setq submitted params))
+                         nil)))
+              (codex-ide-submit-clipboard-image)
+              (codex-ide--submit-prompt))
+            (should submitted)
+            (should-not (codex-ide--pending-local-images session))
+            (should-not (file-exists-p image-path))))))))
+
+(ert-deftest codex-ide-queued-prompt-keeps-temporary-image-until-send ()
+  (let* ((project-dir (codex-ide-test--make-temp-project))
+         (image-path (codex-ide-test--make-project-file
+                      project-dir
+                      "clipboard.png"
+                      "fake-png"))
+         (codex-ide-running-submit-action 'queue)
+         requests)
+    (codex-ide-test-with-fixture project-dir
+      (codex-ide-test-with-fake-processes
+        (let ((session (codex-ide--create-process-session)))
+          (setf (codex-ide-session-thread-id session) "thread-queued-image"
+                (codex-ide-session-current-turn-id session) "turn-current"
+                (codex-ide-session-output-prefix-inserted session) t
+                (codex-ide-session-status session) "running")
+          (with-current-buffer (codex-ide-session-buffer session)
+            (codex-ide--insert-input-prompt session "describe later")
+            (cl-letf (((symbol-function 'codex-ide--save-clipboard-image)
+                       (lambda () image-path))
+                      ((symbol-function 'codex-ide--session-for-current-project)
+                       (lambda () session))
+                      ((symbol-function 'codex-ide--ensure-session-for-current-project)
+                       (lambda () session))
+                      ((symbol-function 'codex-ide--request-sync)
+                       (lambda (_session method params)
+                         (push (cons method params) requests)
+                         '((turn . ((id . "turn-next")))))))
+              (codex-ide-submit-clipboard-image)
+              (codex-ide-submit)
+              (should (file-exists-p image-path))
+              (should-not (codex-ide--pending-local-images session))
+              (codex-ide--handle-notification
+               session
+               '((method . "turn/completed")
+                 (params . ((turn . ((id . "turn-current"))))))))
+            (should (= (length requests) 1))
+            (should (equal (caar requests) "turn/start"))
+            (should-not (file-exists-p image-path))))))))
+
+(ert-deftest codex-ide-insert-input-prompt-refreshes-pending-images-in-render-transaction ()
+  (let* ((project-dir (codex-ide-test--make-temp-project))
+         (image-path (codex-ide-test--make-project-file
+                      project-dir
+                      "screenshot.png"
+                      "fake-png")))
+    (codex-ide-test-with-fixture project-dir
+      (codex-ide-images-test--with-session "idle"
+        (codex-ide--session-metadata-put
+         session
+         :pending-local-images
+         (list image-path))
+        (let ((original
+               (symbol-function 'codex-ide--refresh-pending-local-images-display))
+              contexts)
+          (cl-letf (((symbol-function
+                      'codex-ide--refresh-pending-local-images-display)
+                     (lambda (&rest args)
+                       (push codex-ide--transcript-render-context contexts)
+                       (apply original args))))
+            (codex-ide--insert-input-prompt session nil))
+          (codex-ide-images-test--assert-render-context
+           (car contexts)
+           session)
+          (should (string-match-p
+                   "\\[Image #1\\]"
+                   (overlay-get
+                    (codex-ide--session-metadata-get
+                     session
+                     :pending-local-images-overlay)
+                    'before-string))))))))
+
+(ert-deftest codex-ide-replace-current-input-refreshes-pending-images-in-render-transaction ()
+  (let* ((project-dir (codex-ide-test--make-temp-project))
+         (image-path (codex-ide-test--make-project-file
+                      project-dir
+                      "screenshot.png"
+                      "fake-png")))
+    (codex-ide-test-with-fixture project-dir
+      (codex-ide-images-test--with-session "idle"
+        (codex-ide--insert-input-prompt session "draft")
+        (codex-ide--add-pending-local-image session image-path)
+        (let ((original
+               (symbol-function 'codex-ide--refresh-pending-local-images-display))
+              contexts)
+          (cl-letf (((symbol-function
+                      'codex-ide--refresh-pending-local-images-display)
+                     (lambda (&rest args)
+                       (push codex-ide--transcript-render-context contexts)
+                       (apply original args))))
+            (codex-ide--replace-current-input session "replacement"))
+          (codex-ide-images-test--assert-render-context
+           (car contexts)
+           session)
+          (should (equal (codex-ide--current-input session) "replacement"))
+          (should (string-match-p
+                   "\\[Image #1\\]"
+                   (overlay-get
+                    (codex-ide--session-metadata-get
+                     session
+                     :pending-local-images-overlay)
+                    'before-string))))))))
+
+(ert-deftest codex-ide-begin-turn-display-renders-local-images-in-render-transaction ()
+  (let* ((project-dir (codex-ide-test--make-temp-project))
+         (image-path (codex-ide-test--make-project-file
+                      project-dir
+                      "screenshot.png"
+                      "fake-png")))
+    (codex-ide-test-with-fixture project-dir
+      (codex-ide-images-test--with-session "idle"
+        (codex-ide--insert-input-prompt session "describe this")
+        (let ((original
+               (symbol-function 'codex-ide--insert-local-image-attachments))
+              contexts)
+          (cl-letf (((symbol-function 'codex-ide--insert-local-image-attachments)
+                     (lambda (&rest args)
+                       (push codex-ide--transcript-render-context contexts)
+                       (apply original args))))
+            (codex-ide--begin-turn-display
+             session
+             nil
+             nil
+             (list image-path)))
+          (codex-ide-images-test--assert-render-context
+           (car contexts)
+           session)
+          (save-excursion
+            (goto-char (point-min))
+            (should (search-forward "Attached images:" nil t))
+            (should (get-text-property (match-beginning 0) 'read-only)))
+          (should (string-match-p "\\[Image #1\\]" (buffer-string))))))))
+
+(ert-deftest codex-ide-freeze-active-input-renders-local-images-in-render-transaction ()
+  (let* ((project-dir (codex-ide-test--make-temp-project))
+         (image-path (codex-ide-test--make-project-file
+                      project-dir
+                      "screenshot.png"
+                      "fake-png")))
+    (codex-ide-test-with-fixture project-dir
+      (codex-ide-images-test--with-session "running"
+        (codex-ide--insert-input-prompt session "steer with image")
+        (let ((original
+               (symbol-function 'codex-ide--insert-local-image-attachments))
+              contexts)
+          (cl-letf (((symbol-function 'codex-ide--insert-local-image-attachments)
+                     (lambda (&rest args)
+                       (push codex-ide--transcript-render-context contexts)
+                       (apply original args))))
+            (codex-ide--freeze-active-input-prompt
+             session
+             nil
+             'steering
+             (list image-path)))
+          (codex-ide-images-test--assert-render-context
+           (car contexts)
+           session)
+          (should-not (codex-ide--input-prompt-active-p session))
+          (save-excursion
+            (goto-char (point-min))
+            (should (search-forward "Attached images:" nil t))
+            (should (get-text-property (match-beginning 0) 'read-only)))
+          (should (string-match-p "\\[Image #1\\]" (buffer-string))))))))
 
 (provide 'codex-ide-images-tests)
 

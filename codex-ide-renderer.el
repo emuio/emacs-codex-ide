@@ -54,6 +54,14 @@
 (defvar-local codex-ide-renderer--streaming-defer-timer nil
   "Timer used to reveal delayed streaming markdown tails.")
 
+(defvar codex-ide-renderer-streaming-deferred-reveal-function nil
+  "Optional function that reveals delayed streaming markdown in a buffer.
+
+When non-nil, the function is called with one live BUFFER argument and should
+return non-nil when it handled the reveal.  Transcript controllers use this to
+route timer-triggered buffer mutations through their own transaction layer
+without making the renderer depend on transcript state.")
+
 (defvar codex-ide-renderer-link-keymap
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map button-map)
@@ -1527,28 +1535,65 @@ Return a plist containing inserted markers and updated writable ranges."
   (let ((bounded-start (min (max start (point-min)) (point-max)))
         (bounded-end (min (max end (point-min)) (point-max))))
     (when (< bounded-start bounded-end)
-      (remove-text-properties
-       bounded-start bounded-end
-       '(invisible nil
-		   isearch-open-invisible nil
-		   codex-ide-markdown-deferred nil)))))
+      (let ((pos bounded-start))
+        (while (< pos bounded-end)
+          (let ((next
+                 (min
+                  (or (next-single-property-change
+                       pos
+                       'invisible
+                       nil
+                       bounded-end)
+                      bounded-end)
+                  (or (next-single-property-change
+                       pos
+                       'codex-ide-markdown-deferred
+                       nil
+                       bounded-end)
+                      bounded-end))))
+            (when (or (eq (get-text-property pos 'invisible)
+                          codex-ide-renderer--streaming-deferred-invisibility)
+                      (get-text-property pos 'codex-ide-markdown-deferred))
+              (remove-text-properties
+               pos next
+               '(invisible nil
+			   isearch-open-invisible nil
+			   codex-ide-markdown-deferred nil)))
+            (setq pos next)))))))
+
+(defun codex-ide-renderer-clear-streaming-deferred-markdown (start end)
+  "Reveal delayed streaming markdown between START and END."
+  (codex-ide-renderer--without-undo-recording
+   (let ((inhibit-read-only t))
+     (codex-ide-renderer--clear-streaming-deferred-markdown start end))))
 
 (defun codex-ide-renderer--reveal-streaming-deferred-markdown (buffer)
   "Reveal delayed streaming markdown in BUFFER."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
-      (setq codex-ide-renderer--streaming-defer-timer nil)
-      (codex-ide-renderer--without-undo-recording
-       (let ((inhibit-read-only t))
-         (codex-ide-renderer--clear-streaming-deferred-markdown
-          (point-min)
-          (point-max)))))))
+      (setq codex-ide-renderer--streaming-defer-timer nil))
+    (unless (and (functionp codex-ide-renderer-streaming-deferred-reveal-function)
+                 (funcall codex-ide-renderer-streaming-deferred-reveal-function
+                          buffer))
+      (with-current-buffer buffer
+        (codex-ide-renderer--without-undo-recording
+         (let ((inhibit-read-only t))
+           (codex-ide-renderer--clear-streaming-deferred-markdown
+            (point-min)
+            (point-max))))))))
 
 (defun codex-ide-renderer--cancel-streaming-defer-timer ()
   "Cancel any pending streaming markdown reveal timer."
   (when (timerp codex-ide-renderer--streaming-defer-timer)
     (cancel-timer codex-ide-renderer--streaming-defer-timer))
   (setq codex-ide-renderer--streaming-defer-timer nil))
+
+(defun codex-ide-renderer-reveal-streaming-deferred-markdown (start end)
+  "Cancel pending deferred markdown reveal and reveal START to END."
+  (codex-ide-renderer--cancel-streaming-defer-timer)
+  (codex-ide-renderer--without-undo-recording
+   (let ((inhibit-read-only t))
+     (codex-ide-renderer--clear-streaming-deferred-markdown start end))))
 
 (defun codex-ide-renderer--markdown-last-unmatched-single-backtick (text)
   "Return the last unmatched single-backtick position in TEXT, or nil.
