@@ -629,6 +629,13 @@ interval unless INTERVAL was supplied programmatically.
 "Start or resume the current Codex loop." t)
 (autoload 'codex-ide-loop-pause "codex-ide-loop"
 "Pause the current Codex loop." t)
+(autoload 'codex-ide-loop-set-interval "codex-ide-loop"
+"Set the current Codex loop interval to INTERVAL.
+
+When called interactively, prompt for an interval using the current loop
+interval as the default.  Active loops are rescheduled from now.
+
+(fn &optional INTERVAL)" t)
 (autoload 'codex-ide-loop-stop "codex-ide-loop"
 "Stop and detach the current Codex loop." t)
 (autoload 'codex-ide-loop-send-now "codex-ide-loop"
@@ -638,6 +645,7 @@ interval unless INTERVAL was supplied programmatically.
 (autoload 'codex-ide-loop-jump-to-loop "codex-ide-loop"
 "Show the loop buffer attached to the current Codex session." t)
 (register-definition-prefixes "codex-ide-loop" '("codex-ide-loop-"))
+
 
 ;;; End of scraped data
 

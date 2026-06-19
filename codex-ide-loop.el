@@ -215,6 +215,13 @@ numbers are interpreted as minutes."
    "Codex loop interval: "
    codex-ide-loop-default-interval))
 
+(defun codex-ide-loop--read-updated-interval (loop)
+  "Read a replacement interval for LOOP from the minibuffer."
+  (read-string
+   "Codex loop interval: "
+   (codex-ide-loop--format-duration
+    (codex-ide-loop-interval-seconds loop))))
+
 (defun codex-ide-loop--session-for-current-session-buffer ()
   "Return the Codex session attached to the current session buffer."
   (let ((session (codex-ide--session-for-current-buffer)))
@@ -465,107 +472,111 @@ DIRECTION should be 1 for forward or -1 for backward."
                (prompt (or (codex-ide-loop--current-prompt-raw loop) ""))
                (inhibit-read-only t))
           (codex-ide--without-undo-recording
-            (codex-ide-loop--delete-placeholder-overlay)
-            (codex-ide-loop--delete-input-face-overlay)
-            (erase-buffer)
-            (setq-local codex-ide-loop--loop loop)
-            (setq-local codex-ide-loop--input-end-marker nil)
-            (setq-local codex-ide-loop--prompt-display-start-marker nil)
-            (insert (propertize "Codex Loop"
-                                'face 'codex-ide-loop-title-face)
-                    "\n")
-            (codex-ide-loop--insert-metadata-label "Session")
-            (codex-ide-loop--insert-button
-             (codex-ide-loop--session-name
-              (codex-ide-loop-session loop))
-             #'codex-ide-loop-jump-to-session
-             "Jump to the attached Codex session"
-             'codex-ide-loop-session-link-face)
-            (insert "\n")
-            (codex-ide-loop--insert-metadata-line
-             "State"
-             (codex-ide-loop--state-text loop)
-             (codex-ide-loop--state-face loop))
-            (codex-ide-loop--insert-metadata-line
-             "Interval"
-             (codex-ide-loop--format-duration
-              (codex-ide-loop-interval-seconds loop)))
-            (codex-ide-loop--insert-metadata-line
-             "Last run"
-             (codex-ide-loop--format-time
-              (codex-ide-loop-last-run-at loop)))
-            (codex-ide-loop--insert-metadata-line
-             "Next run"
-             (codex-ide-loop--format-time
-              (codex-ide-loop-next-run-at loop)))
-            (codex-ide-loop--insert-metadata-line
-             "Runs"
-             (number-to-string (or (codex-ide-loop-run-count loop) 0)))
-            (codex-ide-loop--insert-metadata-line
-             "Last skip"
-             (or (codex-ide-loop-last-skip-reason loop) "none"))
-            (codex-ide-loop--insert-metadata-line
-             "Last error"
-             (or (codex-ide-loop-last-error loop) "none"))
-            (insert "\n")
-            (codex-ide-loop--insert-metadata-label "Actions")
-            (codex-ide-loop--insert-button
-             "start"
-             #'codex-ide-loop-start
-             "Start or resume this loop")
-            (insert "  ")
-            (codex-ide-loop--insert-button
-             "pause"
-             #'codex-ide-loop-pause
-             "Pause this loop")
-            (insert "  ")
-            (codex-ide-loop--insert-button
-             "send now"
-             #'codex-ide-loop-send-now
-             "Send the current prompt immediately")
-            (insert "\n\n")
-            (let* ((read-only-end (point))
-                   (prompt-state
-                    (codex-ide-renderer-insert-input-prompt prompt))
-                   (input-end nil))
-              (setq-local codex-ide-loop--prompt-display-start-marker
-                          (copy-marker read-only-end))
-              (goto-char (plist-get prompt-state :prompt-start))
-              (codex-ide-renderer-insert-user-prompt-top-padding)
-              (set-marker (plist-get prompt-state :prompt-start) (point))
-              (goto-char (point-max))
-              (setq input-end (copy-marker (point)))
-              (codex-ide-renderer-insert-user-prompt-bottom-padding)
-              (set-marker-insertion-type input-end t)
-              (setf (codex-ide-loop-prompt-start-marker loop)
-                    (plist-get prompt-state :input-start))
-              (setq-local codex-ide-loop--input-end-marker
-                          input-end)
-              (add-text-properties
-               (point-min)
-               read-only-end
-               '(read-only t
-                 front-sticky (read-only)
-                 rear-nonsticky (read-only)))
-              (codex-ide-renderer-make-region-writable
-               (marker-position (plist-get prompt-state :input-start))
-               (marker-position input-end))
-              (codex-ide-loop--style-input-region
-               (marker-position (plist-get prompt-state :input-start))
-               (marker-position input-end)))
-            (codex-ide-loop--refresh-placeholder)
-            (goto-char
-             (cond
-              (old-point-offset
-               (min (point-max)
-                    (+ (marker-position
-                        (codex-ide-loop-prompt-start-marker loop))
-                       old-point-offset)))
-              (old-prompt-start
-               (min old-point (point-max)))
-              (t
-               (marker-position
-                (codex-ide-loop-prompt-start-marker loop)))))))))))
+           (codex-ide-loop--delete-placeholder-overlay)
+           (codex-ide-loop--delete-input-face-overlay)
+           (erase-buffer)
+           (setq-local codex-ide-loop--loop loop)
+           (setq-local codex-ide-loop--input-end-marker nil)
+           (setq-local codex-ide-loop--prompt-display-start-marker nil)
+           (insert (propertize "Codex Loop"
+                               'face 'codex-ide-loop-title-face)
+                   "\n")
+           (codex-ide-loop--insert-metadata-label "Session")
+           (codex-ide-loop--insert-button
+            (codex-ide-loop--session-name
+             (codex-ide-loop-session loop))
+            #'codex-ide-loop-jump-to-session
+            "Jump to the attached Codex session"
+            'codex-ide-loop-session-link-face)
+           (insert "\n")
+           (codex-ide-loop--insert-metadata-line
+            "State"
+            (codex-ide-loop--state-text loop)
+            (codex-ide-loop--state-face loop))
+           (codex-ide-loop--insert-metadata-label "Interval")
+           (codex-ide-loop--insert-button
+            (codex-ide-loop--format-duration
+             (codex-ide-loop-interval-seconds loop))
+            #'codex-ide-loop-set-interval
+            "Change this loop's interval"
+            'codex-ide-loop-session-link-face)
+           (insert "\n")
+           (codex-ide-loop--insert-metadata-line
+            "Last run"
+            (codex-ide-loop--format-time
+             (codex-ide-loop-last-run-at loop)))
+           (codex-ide-loop--insert-metadata-line
+            "Next run"
+            (codex-ide-loop--format-time
+             (codex-ide-loop-next-run-at loop)))
+           (codex-ide-loop--insert-metadata-line
+            "Runs"
+            (number-to-string (or (codex-ide-loop-run-count loop) 0)))
+           (codex-ide-loop--insert-metadata-line
+            "Last skip"
+            (or (codex-ide-loop-last-skip-reason loop) "none"))
+           (codex-ide-loop--insert-metadata-line
+            "Last error"
+            (or (codex-ide-loop-last-error loop) "none"))
+           (insert "\n")
+           (codex-ide-loop--insert-metadata-label "Actions")
+           (codex-ide-loop--insert-button
+            "start"
+            #'codex-ide-loop-start
+            "Start or resume this loop")
+           (insert "  ")
+           (codex-ide-loop--insert-button
+            "pause"
+            #'codex-ide-loop-pause
+            "Pause this loop")
+           (insert "  ")
+           (codex-ide-loop--insert-button
+            "send now"
+            #'codex-ide-loop-send-now
+            "Send the current prompt immediately")
+           (insert "\n\n")
+           (let* ((read-only-end (point))
+                  (prompt-state
+                   (codex-ide-renderer-insert-input-prompt prompt))
+                  (input-end nil))
+             (setq-local codex-ide-loop--prompt-display-start-marker
+                         (copy-marker read-only-end))
+             (goto-char (plist-get prompt-state :prompt-start))
+             (codex-ide-renderer-insert-user-prompt-top-padding)
+             (set-marker (plist-get prompt-state :prompt-start) (point))
+             (goto-char (point-max))
+             (setq input-end (copy-marker (point)))
+             (codex-ide-renderer-insert-user-prompt-bottom-padding)
+             (set-marker-insertion-type input-end t)
+             (setf (codex-ide-loop-prompt-start-marker loop)
+                   (plist-get prompt-state :input-start))
+             (setq-local codex-ide-loop--input-end-marker
+                         input-end)
+             (add-text-properties
+              (point-min)
+              read-only-end
+              '(read-only t
+			  front-sticky (read-only)
+			  rear-nonsticky (read-only)))
+             (codex-ide-renderer-make-region-writable
+              (marker-position (plist-get prompt-state :input-start))
+              (marker-position input-end))
+             (codex-ide-loop--style-input-region
+              (marker-position (plist-get prompt-state :input-start))
+              (marker-position input-end)))
+           (codex-ide-loop--refresh-placeholder)
+           (goto-char
+            (cond
+             (old-point-offset
+              (min (point-max)
+                   (+ (marker-position
+                       (codex-ide-loop-prompt-start-marker loop))
+                      old-point-offset)))
+             (old-prompt-start
+              (min old-point (point-max)))
+             (t
+              (marker-position
+               (codex-ide-loop-prompt-start-marker loop)))))))))))
 
 (defun codex-ide-loop--loop-at-point ()
   "Return the loop associated with the current buffer."
@@ -646,10 +657,10 @@ Return non-nil when a prompt was submitted."
            :suppress-context t)
           (setf (codex-ide-loop-last-run-at loop) submitted-at))
         (setf
-              (codex-ide-loop-run-count loop)
-              (1+ (or (codex-ide-loop-run-count loop) 0))
-              (codex-ide-loop-last-skip-reason loop) nil
-              (codex-ide-loop-last-error loop) nil)
+         (codex-ide-loop-run-count loop)
+         (1+ (or (codex-ide-loop-run-count loop) 0))
+         (codex-ide-loop-last-skip-reason loop) nil
+         (codex-ide-loop-last-error loop) nil)
         (codex-ide-loop--render-buffer loop)
         t))))
 
@@ -788,6 +799,25 @@ interval unless INTERVAL was supplied programmatically."
     (codex-ide-loop--render-buffer loop)
     (codex-ide-loop--refresh-session-header loop)
     (message "Codex loop paused")))
+
+;;;###autoload
+(defun codex-ide-loop-set-interval (&optional interval)
+  "Set the current Codex loop interval to INTERVAL.
+
+When called interactively, prompt for an interval using the current loop
+interval as the default.  Active loops are rescheduled from now."
+  (interactive)
+  (let* ((loop (codex-ide-loop--loop-at-point))
+         (seconds (codex-ide-loop--parse-interval
+                   (or interval
+                       (codex-ide-loop--read-updated-interval loop)))))
+    (setf (codex-ide-loop-interval-seconds loop) seconds)
+    (if (eq (codex-ide-loop-state loop) 'active)
+        (codex-ide-loop--schedule-next loop)
+      (codex-ide-loop--render-buffer loop)
+      (codex-ide-loop--refresh-session-header loop))
+    (message "Codex loop interval set to %s"
+             (codex-ide-loop--format-duration seconds))))
 
 ;;;###autoload
 (defun codex-ide-loop-stop ()
