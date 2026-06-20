@@ -299,6 +299,9 @@ Decode JSON PAYLOAD, dispatch a bridge tool call, and return JSON.
 
 (autoload 'codex-ide-session-buffer-list "codex-ide-session-buffer-list"
   "Show a tabulated list of live Codex session buffers." t)
+(autoload 'codex-ide-session-buffer-list-monitor-marked-or-all
+  "codex-ide-session-buffer-list"
+  "Open a monitor layout for marked sessions, or all live sessions." t)
 (register-definition-prefixes "codex-ide-session-buffer-list" '("codex-ide-session-buffer-list-"))
 
 
@@ -573,6 +576,34 @@ otherwise use the most recent completed turn.
 (autoload 'codex-ide-submit-clipboard-image "codex-ide-images"
 "Attach the macOS clipboard image to the current Codex prompt." t)
 (register-definition-prefixes "codex-ide-images" '("codex-ide--"))
+
+
+;;; Generated autoloads from codex-ide-monitor.el
+
+(autoload 'codex-ide-monitor-layout "codex-ide-monitor"
+"Display live Codex sessions in a main window plus compact right rail.
+
+(fn &optional FOCUSED-SESSION)" t)
+(autoload 'codex-ide-monitor-layout-for-sessions "codex-ide-monitor"
+"Display selected live SESSIONS in a main window plus compact right rail.
+FOCUSED-SESSION is used as the main window when it is present in SESSIONS.
+Every live selected session is displayed; the first selected session is used
+when FOCUSED-SESSION is nil or not in SESSIONS.
+
+(fn SESSIONS &optional FOCUSED-SESSION)")
+(autoload 'codex-ide-monitor-promote-session "codex-ide-monitor"
+"Promote the selected Codex session buffer to the monitor main window." t)
+(autoload 'codex-ide-monitor-promote-rail-session "codex-ide-monitor"
+"Promote the INDEXth visible monitor rail session to the main window.
+
+(fn INDEX)" t)
+(autoload 'codex-ide-monitor-promote-rail-session-1 "codex-ide-monitor"
+"Promote the first visible monitor rail session to the main window." t)
+(autoload 'codex-ide-monitor-promote-rail-session-2 "codex-ide-monitor"
+"Promote the second visible monitor rail session to the main window." t)
+(autoload 'codex-ide-monitor-promote-rail-session-3 "codex-ide-monitor"
+"Promote the third visible monitor rail session to the main window." t)
+(register-definition-prefixes "codex-ide-monitor" '("codex-ide-monitor-"))
 
 
 ;;; End of scraped data
