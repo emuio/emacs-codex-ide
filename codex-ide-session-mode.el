@@ -30,6 +30,7 @@
 (require 'codex-ide-diff-data)
 (require 'codex-ide-nav)
 (require 'codex-ide-renderer)
+(require 'codex-ide-slash-command)
 (require 'imenu)
 
 (autoload 'codex-ide-session-diff-transcript-point-changed
@@ -40,6 +41,8 @@
   "codex-ide-transient" nil t)
 
 (defvar codex-ide-session-enable-visual-line-mode)
+(defvar corfu-mode)
+(defvar corfu-on-exact-match)
 
 (defvar codex-ide-session-mode-map
   (let ((map (make-sparse-keymap)))
@@ -50,6 +53,10 @@
 (defvar codex-ide-session-prompt-minor-mode-map
   (make-sparse-keymap)
   "Keymap for `codex-ide-session-prompt-minor-mode'.")
+
+(defvar codex-ide-session-slash-command-minor-mode-map
+  (make-sparse-keymap)
+  "Keymap for `codex-ide-session-slash-command-minor-mode'.")
 
 (defvar codex-ide-session-approval-minor-mode-map
   (make-sparse-keymap)
@@ -66,6 +73,9 @@
 (define-key codex-ide-session-mode-map (kbd "<backtab>") #'codex-ide-session-mode-nav-backward)
 (define-key codex-ide-session-prompt-minor-mode-map (kbd "M-p") #'codex-ide-previous-prompt-history)
 (define-key codex-ide-session-prompt-minor-mode-map (kbd "M-n") #'codex-ide-next-prompt-history)
+(define-key codex-ide-session-slash-command-minor-mode-map
+            (kbd "RET")
+            #'codex-ide-slash-command-complete-or-submit)
 (define-key codex-ide-session-prompt-minor-mode-map (kbd "DEL") #'codex-ide-delete-backward-or-remove-attached-image)
 (define-key codex-ide-session-prompt-minor-mode-map (kbd "<backspace>") #'codex-ide-delete-backward-or-remove-attached-image)
 (define-key codex-ide-session-prompt-minor-mode-map (kbd "<delete>") #'codex-ide-delete-forward-or-remove-attached-image)
@@ -99,10 +109,18 @@
 (defvar codex-ide-session-mode--theme-refresh-buffers nil
   "Live buffers currently using `codex-ide-session-mode' theme refresh hooks.")
 
+(defvar-local codex-ide-session-mode--slash-command-auto-completing nil
+  "Non-nil while slash command auto-completion is invoking completion.")
+
 (define-minor-mode codex-ide-session-prompt-minor-mode
   "Minor mode enabled only while point is in the active Codex prompt."
   :lighter " Prompt"
   :keymap codex-ide-session-prompt-minor-mode-map)
+
+(define-minor-mode codex-ide-session-slash-command-minor-mode
+  "Minor mode enabled while editing a Codex slash command prompt."
+  :lighter " Slash"
+  :keymap codex-ide-session-slash-command-minor-mode-map)
 
 (define-minor-mode codex-ide-session-approval-minor-mode
   "Minor mode enabled while a Codex approval is pending."
@@ -191,6 +209,77 @@
                        (codex-ide--point-in-active-prompt-p session))))
       (unless (eq inside codex-ide-session-prompt-minor-mode)
         (codex-ide-session-prompt-minor-mode (if inside 1 -1))))))
+
+(defun codex-ide-session-mode--slash-command-input-p (&optional session)
+  "Return non-nil when SESSION's active prompt begins with a slash."
+  (setq session (or session (and (boundp 'codex-ide--session) codex-ide--session)))
+  (when-let* ((input-start (and session
+                                (codex-ide-session-input-start-marker session)))
+              (input-end (codex-ide-session-mode--input-end-position session))
+              (buffer (and session (codex-ide-session-buffer session))))
+    (and (buffer-live-p buffer)
+         (markerp input-start)
+         (eq (marker-buffer input-start) buffer)
+         (< (marker-position input-start) input-end)
+         (with-current-buffer buffer
+           (eq (char-after input-start) ?/)))))
+
+(defun codex-ide-session-mode-sync-slash-command-minor-mode (&optional session)
+  "Enable or disable slash command prompt editing mode for SESSION."
+  (setq session (or session (and (boundp 'codex-ide--session) codex-ide--session)))
+  (when (derived-mode-p 'codex-ide-session-mode)
+    (let ((active (and session
+                       codex-ide-session-prompt-minor-mode
+                       (codex-ide-session-mode--slash-command-input-p session))))
+      (unless (eq active codex-ide-session-slash-command-minor-mode)
+        (codex-ide-session-slash-command-minor-mode (if active 1 -1))))))
+
+(defun codex-ide-session-mode--show-slash-command-completions ()
+  "Show slash command completions using the active completion frontend."
+  (let ((codex-ide-slash-command--suppress-completion-submit t))
+    (if (bound-and-true-p corfu-mode)
+        (when-let* ((capf (codex-ide-slash-command-completion-at-point)))
+          (let ((completion-extra-properties (nthcdr 3 capf))
+                (corfu-on-exact-match 'show))
+            (completion-in-region
+             (nth 0 capf)
+             (nth 1 capf)
+             (codex-ide-session-mode--preserve-sole-completion-prefix
+              (nth 2 capf)))))
+      (completion-help-at-point))))
+
+(defun codex-ide-session-mode--preserve-sole-completion-prefix (table)
+  "Return completion TABLE with sole-match prefix expansion disabled.
+The wrapped table preserves normal candidate listing, metadata, and exact-match
+checks.  It only changes `try-completion' so automatic popup display does not
+replace a partial slash command with the sole matching command name."
+  (lambda (string pred action)
+    (if action
+        (complete-with-action action table string pred)
+      (let ((result (complete-with-action action table string pred)))
+        (if (and (or (stringp result)
+                     (and (consp result)
+                          (stringp (car result))))
+                 (not (string= (if (consp result) (car result) result)
+                               string))
+                 (let ((matches (all-completions string table pred)))
+                   (and (consp matches)
+                        (null (cdr matches)))))
+            (if (consp result)
+                (cons string (min (or (cdr result) (length string))
+                                  (length string)))
+              string)
+          result)))))
+
+(defun codex-ide-session-mode--maybe-complete-slash-command ()
+  "Automatically show completion while typing a prompt slash command."
+  (codex-ide-session-mode-sync-slash-command-minor-mode)
+  (when (and codex-ide-session-slash-command-minor-mode
+             (not codex-ide-session-mode--slash-command-auto-completing)
+             (not (bound-and-true-p completion-in-region-mode))
+             (codex-ide-slash-command-completion-at-point))
+    (let ((codex-ide-session-mode--slash-command-auto-completing t))
+      (codex-ide-session-mode--show-slash-command-completions))))
 
 (defun codex-ide-session-mode--focal-points ()
   "Return focal points for the current session buffer."
@@ -447,7 +536,12 @@ so users can navigate within those controls without opting out of follow mode."
 When point is in the active prompt, `codex-ide-session-prompt-minor-mode'
 adds these bindings:
 
-* \\<codex-ide-session-prompt-minor-mode-map>\\[codex-ide-previous-prompt-history] and \\[codex-ide-next-prompt-history] move through prompt history."
+* \\<codex-ide-session-prompt-minor-mode-map>\\[codex-ide-previous-prompt-history] and \\[codex-ide-next-prompt-history] move through prompt history.
+
+When the active prompt begins with a slash,
+`codex-ide-session-slash-command-minor-mode' adds this binding:
+
+* \\<codex-ide-session-slash-command-minor-mode-map>\\[codex-ide-slash-command-complete-or-submit] completes or submits the slash command."
   (codex-ide--disable-session-font-lock)
   (setq-local truncate-lines nil)
   (when codex-ide-session-enable-visual-line-mode
@@ -458,6 +552,14 @@ adds these bindings:
               '(codex-ide-session-mode--focal-points))
   (setq-local imenu-create-index-function
               #'codex-ide-session-mode--imenu-create-index)
+  (add-hook 'completion-at-point-functions
+            #'codex-ide-slash-command-completion-at-point
+            nil
+            t)
+  (add-hook 'post-self-insert-hook
+            #'codex-ide-session-mode--maybe-complete-slash-command
+            nil
+            t)
   (setq-local codex-ide-session-mode--last-point (point))
   (setq-local codex-ide-session-mode--last-window-start nil)
   (codex-ide-session-mode--teardown-theme-refresh)
@@ -470,6 +572,10 @@ adds these bindings:
             nil
             t)
   (add-hook 'post-command-hook #'codex-ide--sync-prompt-minor-mode nil t)
+  (add-hook 'post-command-hook
+            #'codex-ide-session-mode-sync-slash-command-minor-mode
+            nil
+            t)
   (add-hook 'post-command-hook
             #'codex-ide-session-mode-sync-approval-minor-mode
             nil

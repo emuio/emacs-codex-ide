@@ -29,7 +29,8 @@
                        "* \\[codex-ide-apply-config-preset]"
                        "* \\[codex-ide-previous-prompt-line]"
                        "* \\[codex-ide-session-mode-nav-forward]"
-                       "* \\<codex-ide-session-prompt-minor-mode-map>\\[codex-ide-previous-prompt-history]"))
+                       "* \\<codex-ide-session-prompt-minor-mode-map>\\[codex-ide-previous-prompt-history]"
+                       "* \\<codex-ide-session-slash-command-minor-mode-map>\\[codex-ide-slash-command-complete-or-submit]"))
       (should (string-match-p (regexp-quote binding) doc)))))
 
 (ert-deftest codex-ide-session-mode-binds-session-diff-open ()
@@ -43,6 +44,189 @@
     (codex-ide-session-mode)
     (should (eq (key-binding (kbd "C-c C-p"))
                 #'codex-ide-apply-config-preset))))
+
+(ert-deftest codex-ide-session-mode-installs-slash-command-auto-completion ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (should (memq #'codex-ide-session-mode--maybe-complete-slash-command
+                  post-self-insert-hook))
+    (should (memq #'codex-ide-session-mode-sync-slash-command-minor-mode
+                  post-command-hook))))
+
+(ert-deftest codex-ide-session-mode-slash-command-mode-binds-ret-to-complete-or-submit ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (codex-ide-session-slash-command-minor-mode 1)
+    (should (eq (key-binding (kbd "RET"))
+                #'codex-ide-slash-command-complete-or-submit))))
+
+(ert-deftest codex-ide-session-mode-enables-slash-command-mode-for-leading-slash ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle")))
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session nil)
+      (goto-char (codex-ide-session-input-start-marker session))
+      (insert "/")
+      (codex-ide--sync-prompt-minor-mode session)
+      (codex-ide-session-mode-sync-slash-command-minor-mode session)
+      (should codex-ide-session-slash-command-minor-mode))))
+
+(ert-deftest codex-ide-session-mode-disables-slash-command-mode-without-leading-slash ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle")))
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session nil)
+      (goto-char (codex-ide-session-input-start-marker session))
+      (insert "/")
+      (codex-ide--sync-prompt-minor-mode session)
+      (codex-ide-session-mode-sync-slash-command-minor-mode session)
+      (should codex-ide-session-slash-command-minor-mode)
+      (let ((inhibit-read-only t))
+        (delete-region (codex-ide-session-input-start-marker session)
+                       (1+ (marker-position
+                            (codex-ide-session-input-start-marker session))))
+        (insert "hello"))
+      (codex-ide-session-mode-sync-slash-command-minor-mode session)
+      (should-not codex-ide-session-slash-command-minor-mode))))
+
+(ert-deftest codex-ide-session-mode-auto-completes-leading-slash-command ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle"))
+          completion-at-point-called
+          completion-help-called
+          suppress-submit)
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session nil)
+      (goto-char (codex-ide-session-input-start-marker session))
+      (insert "/")
+      (cl-letf (((symbol-function 'completion-at-point)
+                 (lambda ()
+                   (setq completion-at-point-called t)))
+                ((symbol-function 'completion-help-at-point)
+                 (lambda ()
+                   (setq completion-help-called t)
+                   (setq suppress-submit
+                         codex-ide-slash-command--suppress-completion-submit))))
+        (let ((previous-event last-command-event))
+          (unwind-protect
+              (progn
+                (setq last-command-event ?/)
+                (codex-ide-session-mode--maybe-complete-slash-command))
+            (setq last-command-event previous-event))))
+      (should codex-ide-session-slash-command-minor-mode)
+      (should completion-help-called)
+      (should suppress-submit)
+      (should-not completion-at-point-called))))
+
+(ert-deftest codex-ide-session-mode-auto-completes-leading-slash-command-with-corfu ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((codex-ide-slash-commands
+           '(("model" ignore "Set model.")))
+          (session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle"))
+          completion-help-called
+          completion-in-region-called
+          exact-match
+          suppress-submit
+          try-result
+          candidates)
+      (setq-local codex-ide--session session)
+      (setq-local corfu-mode t)
+      (codex-ide--insert-input-prompt session nil)
+      (goto-char (codex-ide-session-input-start-marker session))
+      (insert "/m")
+      (cl-letf (((symbol-function 'completion-in-region)
+                 (lambda (_beg _end table &optional pred)
+                   (setq completion-in-region-called t)
+                   (setq exact-match corfu-on-exact-match)
+                   (setq suppress-submit
+                         codex-ide-slash-command--suppress-completion-submit)
+                   (setq try-result
+                         (completion-try-completion "m" table pred 1))
+                   (setq candidates
+                         (all-completions "m" table pred))))
+                ((symbol-function 'completion-help-at-point)
+                 (lambda ()
+                   (setq completion-help-called t))))
+        (let ((previous-event last-command-event))
+          (unwind-protect
+              (progn
+                (setq last-command-event ?m)
+                (codex-ide-session-mode--maybe-complete-slash-command))
+            (setq last-command-event previous-event))))
+      (should codex-ide-session-slash-command-minor-mode)
+      (should completion-in-region-called)
+      (should suppress-submit)
+      (should (eq exact-match 'show))
+      (should (equal try-result '("m" . 1)))
+      (should (equal candidates '("model")))
+      (should-not completion-help-called))))
+
+(ert-deftest codex-ide-session-mode-preserve-sole-completion-prefix-lists-candidates ()
+  (let* ((table (completion-table-dynamic
+                 (lambda (_)
+                   '("model"))))
+         (wrapped
+          (codex-ide-session-mode--preserve-sole-completion-prefix table)))
+    (should (equal (complete-with-action nil wrapped "m" nil)
+                   "m"))
+    (should (equal (completion-try-completion "m" wrapped nil 1)
+                   '("m" . 1)))
+    (should (equal (all-completions "m" wrapped nil)
+                   '("model")))
+    (should (test-completion "model" wrapped nil))))
+
+(ert-deftest codex-ide-session-mode-auto-completes-after-command-prefix-character ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle"))
+          called)
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session nil)
+      (goto-char (codex-ide-session-input-start-marker session))
+      (insert "/m")
+      (cl-letf (((symbol-function 'completion-help-at-point)
+                 (lambda ()
+                   (setq called t))))
+        (let ((previous-event last-command-event))
+          (unwind-protect
+              (progn
+                (setq last-command-event ?m)
+                (codex-ide-session-mode--maybe-complete-slash-command))
+            (setq last-command-event previous-event))))
+      (should codex-ide-session-slash-command-minor-mode)
+      (should called))))
+
+(ert-deftest codex-ide-session-mode-does-not-auto-complete-nonleading-slash ()
+  (with-temp-buffer
+    (codex-ide-session-mode)
+    (let ((session (make-codex-ide-session
+                    :buffer (current-buffer)
+                    :status "idle"))
+          called)
+      (setq-local codex-ide--session session)
+      (codex-ide--insert-input-prompt session nil)
+      (goto-char (codex-ide-session-input-start-marker session))
+      (insert "hello /")
+      (cl-letf (((symbol-function 'completion-at-point)
+                 (lambda ()
+                   (setq called t))))
+        (codex-ide-session-mode--maybe-complete-slash-command))
+      (should-not codex-ide-session-slash-command-minor-mode)
+      (should-not called))))
 
 (ert-deftest codex-ide-session-mode-imenu-indexes-user-prompts ()
   (with-temp-buffer
