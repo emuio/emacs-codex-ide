@@ -63,6 +63,19 @@
     (should (eq (codex-ide--thread-read-with-rollout-render-items thread-read)
                 thread-read))))
 
+(ert-deftest codex-ide-thread-history-passes-rollout-limit ()
+  (let ((thread-read '((thread . ((id . "thread-1")
+                                  (path . "/tmp/thread.jsonl")
+                                  (turns . [((id . "turn-1")
+                                             (items . []))])))))
+        captured-limit)
+    (cl-letf (((symbol-function 'codex-ide-rollout-turn-render-items)
+               (lambda (_path &optional limit)
+                 (setq captured-limit limit)
+                 nil)))
+      (codex-ide--thread-read-with-rollout-render-items thread-read 7))
+    (should (equal captured-limit 7))))
+
 (provide 'codex-ide-thread-history-tests)
 
 ;;; codex-ide-thread-history-tests.el ends here

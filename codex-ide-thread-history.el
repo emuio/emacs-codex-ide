@@ -70,11 +70,12 @@
       (setf (alist-get 'items copy) merged)
       copy)))
 
-(defun codex-ide--thread-read-with-rollout-render-items (thread-read)
-  "Return THREAD-READ augmented with renderable rollout storage items."
+(defun codex-ide--thread-read-with-rollout-render-items (thread-read &optional limit)
+  "Return THREAD-READ augmented with renderable rollout storage items.
+When LIMIT is non-nil, request only that many recent rollout turns."
   (let* ((thread (alist-get 'thread thread-read))
          (path (alist-get 'path thread))
-         (rollout-turns (codex-ide-rollout-turn-render-items path)))
+         (rollout-turns (codex-ide-rollout-turn-render-items path limit)))
     (if (not rollout-turns)
         thread-read
       (let* ((copy (copy-tree thread-read))
