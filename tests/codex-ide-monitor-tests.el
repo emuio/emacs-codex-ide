@@ -233,6 +233,21 @@ same order."
       (should (eq (window-buffer (selected-window))
                   (codex-ide-session-buffer session-c))))))
 
+(ert-deftest codex-ide-monitor-promote-rail-key-swaps-default-layout-position ()
+  (codex-ide-monitor-test-with-sessions (session-a session-b session-c session-d)
+    (setf (codex-ide-session-created-at session-a) 40
+          (codex-ide-session-created-at session-b) 30
+          (codex-ide-session-created-at session-c) 20
+          (codex-ide-session-created-at session-d) 10)
+    (save-window-excursion
+      (codex-ide-monitor-layout)
+      (call-interactively
+       (lookup-key codex-ide-session-mode-map (kbd "C-c 2")))
+      (should (eq (window-buffer (selected-window))
+                  (codex-ide-session-buffer session-c)))
+      (should (equal (codex-ide-monitor--visible-rail-sessions)
+                     (list session-b session-a session-d))))))
+
 (ert-deftest codex-ide-monitor-layout-for-sessions-displays-only-selected-sessions ()
   (codex-ide-monitor-test-with-sessions (session-a session-b session-c session-d)
     (save-window-excursion
@@ -270,6 +285,19 @@ same order."
       (should (get-buffer-window (codex-ide-session-buffer session-a) nil))
       (should (get-buffer-window (codex-ide-session-buffer session-c) nil))
       (should-not (get-buffer-window (codex-ide-session-buffer session-d) nil)))))
+
+(ert-deftest codex-ide-monitor-promote-rail-key-swaps-explicit-session-scope-position ()
+  (codex-ide-monitor-test-with-sessions (session-a session-b session-c session-d)
+    (save-window-excursion
+      (codex-ide-monitor-layout-for-sessions
+       (list session-a session-b session-c session-d)
+       session-a)
+      (call-interactively
+       (lookup-key codex-ide-session-mode-map (kbd "C-c 3")))
+      (should (eq (window-buffer (selected-window))
+                  (codex-ide-session-buffer session-d)))
+      (should (equal (codex-ide-monitor--visible-rail-sessions)
+                     (list session-b session-c session-a))))))
 
 (ert-deftest codex-ide-monitor-promote-session-errors-outside-live-session ()
   (codex-ide-monitor-test-with-sessions (session-a session-b)

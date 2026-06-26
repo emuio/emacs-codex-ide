@@ -23,6 +23,9 @@
 (defconst codex-ide-monitor--rail-sessions-frame-parameter
   'codex-ide-monitor-rail-sessions)
 
+(defconst codex-ide-monitor--focused-session-frame-parameter
+  'codex-ide-monitor-focused-session)
+
 (defconst codex-ide-monitor--session-scope-frame-parameter
   'codex-ide-monitor-session-scope)
 
@@ -115,6 +118,9 @@
                          codex-ide-monitor--rail-sessions-frame-parameter
                          rail-sessions)
     (set-frame-parameter frame
+                         codex-ide-monitor--focused-session-frame-parameter
+                         focused-session)
+    (set-frame-parameter frame
                          codex-ide-monitor--session-scope-frame-parameter
                          session-scope)
     (delete-other-windows)
@@ -171,14 +177,42 @@ when FOCUSED-SESSION is nil or not in SESSIONS."
        (delq focused (copy-sequence deduped-sessions))
        deduped-sessions))))
 
+(defun codex-ide-monitor--swap-rail-session (focused-session rail-sessions
+                                                             session)
+  "Return RAIL-SESSIONS with SESSION replaced by FOCUSED-SESSION."
+  (mapcar (lambda (rail-session)
+            (if (eq rail-session session)
+                focused-session
+              rail-session))
+          rail-sessions))
+
 (defun codex-ide-monitor--promote-session (session)
-  "Promote SESSION while preserving any explicit monitor session scope."
-  (if-let* ((session-scope
-             (frame-parameter
-              nil
-              codex-ide-monitor--session-scope-frame-parameter)))
-      (codex-ide-monitor-layout-for-sessions session-scope session)
-    (codex-ide-monitor-layout session)))
+  "Promote SESSION while preserving the current monitor layout order."
+  (let* ((frame (selected-frame))
+         (focused-session
+          (frame-parameter
+           frame
+           codex-ide-monitor--focused-session-frame-parameter))
+         (rail-sessions
+          (frame-parameter
+           frame
+           codex-ide-monitor--rail-sessions-frame-parameter))
+         (session-scope
+          (frame-parameter
+           frame
+           codex-ide-monitor--session-scope-frame-parameter)))
+    (cond
+     ((and focused-session
+           (memq session rail-sessions))
+      (codex-ide-monitor--display-sessions
+       session
+       (codex-ide-monitor--swap-rail-session
+        focused-session rail-sessions session)
+       session-scope))
+     (session-scope
+      (codex-ide-monitor-layout-for-sessions session-scope session))
+     (t
+      (codex-ide-monitor-layout session)))))
 
 ;;;###autoload
 (defun codex-ide-monitor-promote-session ()
