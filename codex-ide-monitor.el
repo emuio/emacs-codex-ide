@@ -20,6 +20,11 @@
 (defconst codex-ide-monitor--default-rail-sessions 3
   "Default number of unmarked live Codex sessions shown in the monitor rail.")
 
+(defcustom codex-ide-monitor-rail-width 50
+  "Preferred width in columns for the compact right monitor rail."
+  :type 'integer
+  :group 'codex-ide)
+
 (defconst codex-ide-monitor--rail-sessions-frame-parameter
   'codex-ide-monitor-rail-sessions)
 
@@ -32,6 +37,12 @@
 (defun codex-ide-monitor--live-sessions ()
   "Return live sessions with live session buffers."
   (codex-ide--session-buffer-sessions))
+
+(defun codex-ide-monitor--live-subset (sessions)
+  "Return live SESSIONS in their existing order."
+  (let ((live-sessions (codex-ide-monitor--live-sessions)))
+    (seq-filter (lambda (session) (memq session live-sessions))
+                sessions)))
 
 (defun codex-ide-monitor--recent-sessions (&optional sessions)
   "Return SESSIONS sorted by most recent activity first."
@@ -98,6 +109,13 @@
     (when (> count 0)
       (nreverse (cons current windows)))))
 
+(defun codex-ide-monitor--rail-window-width (window)
+  "Return the compact right rail width for WINDOW."
+  (max window-min-width
+       (min codex-ide-monitor-rail-width
+            (max window-min-width
+                 (/ (window-total-width window) 3)))))
+
 (defun codex-ide-monitor--visible-rail-sessions (&optional frame)
   "Return monitor rail sessions currently visible in FRAME."
   (let* ((frame (or frame (selected-frame)))
@@ -112,8 +130,20 @@
 (defun codex-ide-monitor--display-sessions (focused-session rail-sessions
                                                            &optional session-scope)
   "Display FOCUSED-SESSION and RAIL-SESSIONS in the selected frame."
-  (let ((main-buffer (codex-ide-session-buffer focused-session))
-        (frame (selected-frame)))
+  (let* ((live-sessions (codex-ide-monitor--live-sessions))
+         (session-scope (and session-scope
+                             (codex-ide-monitor--live-subset session-scope)))
+         (focused-session (and (memq focused-session live-sessions)
+                               focused-session))
+         (rail-sessions (codex-ide-monitor--live-subset rail-sessions))
+         (fallback-session (car rail-sessions))
+         (focused-session (or focused-session fallback-session))
+         (rail-sessions (delq focused-session (copy-sequence rail-sessions)))
+         (main-buffer (and focused-session
+                           (codex-ide-session-buffer focused-session)))
+         (frame (selected-frame)))
+    (unless focused-session
+      (user-error "No live Codex sessions to monitor"))
     (set-frame-parameter frame
                          codex-ide-monitor--rail-sessions-frame-parameter
                          rail-sessions)
@@ -127,7 +157,11 @@
     (let ((main-window (selected-window)))
       (set-window-buffer main-window main-buffer)
       (when rail-sessions
-        (let* ((rail-root (split-window main-window nil 'right))
+        (let* ((rail-root (split-window
+                           main-window
+                           (- (codex-ide-monitor--rail-window-width
+                               main-window))
+                           'right))
                (rail-windows (codex-ide-monitor--split-rail
                               rail-root
                               (length rail-sessions))))
@@ -147,7 +181,7 @@
   (let* ((sessions (codex-ide-monitor--default-sessions))
          (focused (if (memq focused-session sessions)
                       focused-session
-                    (car sessions))))
+                    (codex-ide-monitor--focused-session sessions))))
     (unless focused
       (user-error "No live Codex sessions to monitor"))
     (codex-ide-monitor--display-sessions

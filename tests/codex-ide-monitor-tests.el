@@ -80,6 +80,22 @@ same order."
       (dolist (session (list session-b session-c session-d session-e))
         (should (get-buffer-window (codex-ide-session-buffer session) nil))))))
 
+(ert-deftest codex-ide-monitor-layout-focuses-current-default-session ()
+  (codex-ide-monitor-test-with-sessions
+      (session-a session-b session-c session-d session-e)
+    (setf (codex-ide-session-created-at session-a) 10
+          (codex-ide-session-created-at session-b) 50
+          (codex-ide-session-created-at session-c) 30
+          (codex-ide-session-created-at session-d) 40
+          (codex-ide-session-created-at session-e) 20)
+    (save-window-excursion
+      (with-current-buffer (codex-ide-session-buffer session-c)
+        (codex-ide-monitor-layout))
+      (should (eq (window-buffer (selected-window))
+                  (codex-ide-session-buffer session-c)))
+      (should (equal (codex-ide-monitor--visible-rail-sessions)
+                     (list session-b session-d session-e))))))
+
 (ert-deftest codex-ide-monitor-layout-errors-without-live-sessions ()
   (codex-ide-test-with-fixture (codex-ide-test--make-temp-project)
     (let ((codex-ide--sessions nil))
@@ -113,6 +129,20 @@ same order."
         (should (= (window-point rail-window)
                    (with-current-buffer (codex-ide-session-buffer session-c)
                      (point-max))))))))
+
+(ert-deftest codex-ide-monitor-layout-uses-compact-rail-width ()
+  (codex-ide-monitor-test-with-sessions (session-a session-b)
+    (save-window-excursion
+      (delete-other-windows)
+      (codex-ide-monitor-layout session-a)
+      (let ((main-window
+             (get-buffer-window (codex-ide-session-buffer session-a) nil))
+            (rail-window
+             (get-buffer-window (codex-ide-session-buffer session-b) nil)))
+        (should main-window)
+        (should rail-window)
+        (should (> (window-total-width main-window)
+                   (window-total-width rail-window)))))))
 
 (ert-deftest codex-ide-monitor-tail-window-bottom-aligns-buffer-end ()
   (save-window-excursion
@@ -247,6 +277,23 @@ same order."
                   (codex-ide-session-buffer session-c)))
       (should (equal (codex-ide-monitor--visible-rail-sessions)
                      (list session-b session-a session-d))))))
+
+(ert-deftest codex-ide-monitor-promote-prunes-stale-rail-sessions ()
+  (codex-ide-monitor-test-with-sessions (session-a session-b session-c session-d)
+    (save-window-excursion
+      (codex-ide-monitor-layout-for-sessions
+       (list session-a session-b session-c session-d)
+       session-a)
+      (kill-buffer (codex-ide-session-buffer session-c))
+      (codex-ide-monitor-promote-rail-session 1)
+      (should (eq (window-buffer (selected-window))
+                  (codex-ide-session-buffer session-b)))
+      (should (equal (codex-ide-monitor--visible-rail-sessions)
+                     (list session-a session-d)))
+      (should (equal
+               (frame-parameter
+                nil codex-ide-monitor--session-scope-frame-parameter)
+               (list session-a session-b session-d))))))
 
 (ert-deftest codex-ide-monitor-layout-for-sessions-displays-only-selected-sessions ()
   (codex-ide-monitor-test-with-sessions (session-a session-b session-c session-d)
