@@ -278,6 +278,40 @@ same order."
       (should (equal (codex-ide-monitor--visible-rail-sessions)
                      (list session-b session-a session-d))))))
 
+(ert-deftest codex-ide-monitor-promote-rail-key-preserves-unrelated-scrolled-rail ()
+  (codex-ide-monitor-test-with-sessions (session-a session-b session-c session-d)
+    (setf (codex-ide-session-created-at session-a) 40
+          (codex-ide-session-created-at session-b) 30
+          (codex-ide-session-created-at session-c) 20
+          (codex-ide-session-created-at session-d) 10)
+    (with-current-buffer (codex-ide-session-buffer session-d)
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (dotimes (line 80)
+          (insert (format "line %02d\n" line)))))
+    (save-window-excursion
+      (codex-ide-monitor-layout)
+      (let* ((rail-window
+              (get-buffer-window (codex-ide-session-buffer session-d) nil))
+             (old-start nil)
+             (old-point nil))
+        (should rail-window)
+        (with-current-buffer (codex-ide-session-buffer session-d)
+          (setq old-start (point-min)
+                old-point (point-min)))
+        (set-window-start rail-window old-start t)
+        (set-window-point rail-window old-point)
+        (set-window-parameter rail-window 'codex-ide-tail-follow-suspended t)
+        (call-interactively
+         (lookup-key codex-ide-session-mode-map (kbd "C-c 2")))
+        (let ((new-rail-window
+               (get-buffer-window (codex-ide-session-buffer session-d) nil)))
+          (should new-rail-window)
+          (should (window-parameter new-rail-window
+                                    'codex-ide-tail-follow-suspended))
+          (should (= (window-start new-rail-window) old-start))
+          (should (= (window-point new-rail-window) old-point)))))))
+
 (ert-deftest codex-ide-monitor-promote-prunes-stale-rail-sessions ()
   (codex-ide-monitor-test-with-sessions (session-a session-b session-c session-d)
     (save-window-excursion

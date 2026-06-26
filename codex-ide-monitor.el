@@ -93,6 +93,44 @@
                       codex-ide-session-mode--last-window-start
                       (window-start window)))))))
 
+(defun codex-ide-monitor--capture-rail-window-states (sessions frame)
+  "Return scroll states for visible rail SESSIONS in FRAME."
+  (cl-loop for session in sessions
+           for buffer = (codex-ide-session-buffer session)
+           for window = (and buffer (get-buffer-window buffer frame))
+           when window
+           collect
+           (cons session
+                 (list :point (window-point window)
+                       :start (window-start window)
+                       :suspended
+                       (window-parameter
+                        window
+                        'codex-ide-tail-follow-suspended)))))
+
+(defun codex-ide-monitor--restore-window-state (window state)
+  "Restore WINDOW point and scroll STATE."
+  (when (window-live-p window)
+    (let ((point (plist-get state :point))
+          (start (plist-get state :start)))
+      (set-window-start window start t)
+      (set-window-point window point)
+      (set-window-parameter
+       window
+       'codex-ide-tail-follow-suspended
+       (plist-get state :suspended))
+      (with-current-buffer (window-buffer window)
+        (when (local-variable-p 'codex-ide-session-mode--last-point)
+          (setq-local codex-ide-session-mode--last-point point
+                      codex-ide-session-mode--last-window-start start))))))
+
+(defun codex-ide-monitor--tail-or-restore-rail-window (window session states)
+  "Tail WINDOW for SESSION, or restore a suspended rail state from STATES."
+  (let ((state (cdr (assq session states))))
+    (if (and state (plist-get state :suspended))
+        (codex-ide-monitor--restore-window-state window state)
+      (codex-ide-monitor--tail-window window))))
+
 (defun codex-ide-monitor--split-rail (window count)
   "Split WINDOW into COUNT stacked rail windows and return them top to bottom."
   (let ((windows nil)
@@ -141,7 +179,14 @@
          (rail-sessions (delq focused-session (copy-sequence rail-sessions)))
          (main-buffer (and focused-session
                            (codex-ide-session-buffer focused-session)))
-         (frame (selected-frame)))
+         (frame (selected-frame))
+         (old-rail-sessions
+          (frame-parameter frame
+                           codex-ide-monitor--rail-sessions-frame-parameter))
+         (old-rail-states
+          (codex-ide-monitor--capture-rail-window-states
+           old-rail-sessions
+           frame)))
     (unless focused-session
       (user-error "No live Codex sessions to monitor"))
     (set-frame-parameter frame
@@ -168,7 +213,10 @@
           (cl-mapc
            (lambda (window session)
              (set-window-buffer window (codex-ide-session-buffer session))
-             (codex-ide-monitor--tail-window window))
+             (codex-ide-monitor--tail-or-restore-rail-window
+              window
+              session
+              old-rail-states))
            rail-windows
            rail-sessions)))
       (codex-ide-monitor--tail-window main-window)
