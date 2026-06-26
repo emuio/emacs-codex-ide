@@ -723,6 +723,16 @@ list should be created or deleted, or whether an approval is pending."
         (codex-ide--input-end-position session)
       (point-max))))
 
+(defun codex-ide--bottom-align-transcript-window (window position)
+  "Bottom-align WINDOW around transcript POSITION."
+  (when (and (window-live-p window)
+             (eq (window-buffer window) (current-buffer)))
+    (save-selected-window
+      (select-window window)
+      (goto-char position)
+      (set-window-point window position)
+      (recenter -1))))
+
 (defun codex-ide--input-edit-point-position (point-pos)
   "Return POINT-POS when it is an active input edit position.
 When point is at the active input end, return nil so transcript tail following
@@ -764,10 +774,13 @@ can keep using the current tail position."
                      (marker-buffer point-marker))
             (let ((point-pos (marker-position point-marker)))
               (if follow-anchor
-	          (set-window-point
-                   window
-                   (or (codex-ide--input-edit-point-position point-pos)
-                       tail-pos))
+                  (let ((input-edit-pos
+                         (codex-ide--input-edit-point-position point-pos)))
+                    (set-window-point window (or input-edit-pos tail-pos))
+                    (unless input-edit-pos
+                      (codex-ide--bottom-align-transcript-window
+                       window
+                       tail-pos)))
 	        (when (and (markerp start-marker)
 	                   (marker-buffer start-marker))
 	          (set-window-start window (marker-position start-marker) t))
