@@ -811,6 +811,65 @@ SESSION defaults to the session associated with the current buffer."
     (message "%s"
              (codex-ide-config-format-apply-message key value scope count))))
 
+;;;###autoload
+(defun codex-ide-set-model-and-reasoning-effort
+    (&optional model reasoning-effort scope session)
+  "Prompt for a Codex model, then prompt for reasoning effort, and apply both.
+When MODEL is an empty string, clear the configured model.  SESSION defaults to
+the session associated with the current buffer.  Interactively, prompt for the
+target scope after reading both values."
+  (interactive)
+  (let* ((session (or session (codex-ide--session-for-current-buffer)))
+         (model (or model (codex-ide-config-read-value 'model session)))
+         (model (and model
+                     (not (string-empty-p model))
+                     model))
+         (reasoning-effort
+          (or reasoning-effort
+              (codex-ide-config-read-value 'reasoning-effort session)))
+         (scope (or scope (codex-ide-config-read-scope session)))
+         (count (codex-ide-config-apply-values
+                 (list 'model model
+                       'reasoning-effort reasoning-effort)
+                 scope
+                 session)))
+    (message "%s"
+             (codex-ide-config-format-apply-values-message
+              (list 'model model
+                    'reasoning-effort reasoning-effort)
+              scope
+              count))))
+
+(defun codex-ide-config-format-apply-values-message (values scope count)
+  "Return a user-facing message for config VALUES applied with SCOPE to COUNT.
+VALUES is a plist keyed by Codex config keys."
+  (let* ((changes
+          (delq
+           nil
+           (mapcar
+            (lambda (key)
+              (when (codex-ide-config--plist-member-p values key)
+                (let ((value (plist-get values key)))
+                  (format "%s %s"
+                          (codex-ide-config--label key)
+                          (if value
+                              (format "set to %s"
+                                      (codex-ide-config-format-value value))
+                            "cleared")))))
+            (codex-ide-config--keys))))
+         (scope-text
+          (pcase scope
+            ('this-session "this session")
+            ('all-sessions
+             (format "%d live session%s and future sessions"
+                     count
+                     (if (= count 1) "" "s")))
+            ('future-sessions "future sessions")
+            (_ "the selected scope"))))
+    (format "Codex %s for %s."
+            (mapconcat #'identity changes "; ")
+            scope-text)))
+
 (defun codex-ide-config-format-apply-message (key value scope count)
   "Return a user-facing message for KEY VALUE applied with SCOPE to COUNT sessions."
   (let* ((label (capitalize (codex-ide-config--label key)))

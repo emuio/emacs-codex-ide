@@ -461,6 +461,71 @@
                "manual-model")))
     (should (equal (codex-ide-config-read-value 'model) "manual-model"))))
 
+(ert-deftest codex-ide-set-model-and-reasoning-effort-prompts-in-order-and-applies ()
+  (let ((project-dir (codex-ide-test--make-temp-project))
+        (codex-ide-config-history nil)
+        (codex-ide-model "gpt-5.4")
+        (codex-ide-reasoning-effort "medium")
+        (keys nil)
+        (scope-session nil)
+        (message-text nil))
+    (codex-ide-test-with-fixture project-dir
+				 (codex-ide-test-with-fake-processes
+				  (let ((session (codex-ide--create-process-session)))
+                                    (with-current-buffer
+                                        (codex-ide-session-buffer session)
+                                      (cl-letf (((symbol-function
+                                                  'codex-ide-config-read-value)
+						 (lambda (key &optional _session)
+                                                   (push key keys)
+                                                   (pcase key
+                                                     ('model "gpt-5.4-mini")
+                                                     ('reasoning-effort "high"))))
+                                                ((symbol-function
+                                                  'codex-ide-config-read-scope)
+						 (lambda (&optional session)
+                                                   (setq scope-session session)
+                                                   'this-session))
+                                                ((symbol-function 'message)
+                                                 (lambda (format-string &rest args)
+                                                   (setq message-text
+                                                         (apply #'format
+                                                                format-string
+                                                                args)))))
+					(codex-ide-set-model-and-reasoning-effort)))
+                                    (should (equal (nreverse keys)
+                                                   '(model reasoning-effort)))
+                                    (should (eq scope-session session))
+                                    (should (equal codex-ide-model "gpt-5.4"))
+                                    (should (equal codex-ide-reasoning-effort
+                                                   "medium"))
+                                    (should (equal
+                                             (codex-ide-config-effective-value
+                                              'model session)
+                                             "gpt-5.4-mini"))
+                                    (should (equal
+                                             (codex-ide-config-effective-value
+                                              'reasoning-effort session)
+                                             "high"))
+                                    (should (= (length codex-ide-config-history)
+                                               1))
+                                    (should (string-match-p
+                                             (regexp-quote
+                                              "model set to gpt-5.4-mini")
+                                             message-text))
+                                    (should (string-match-p
+                                             (regexp-quote
+                                              "reasoning effort set to high")
+                                             message-text)))))))
+
+(ert-deftest codex-ide-set-model-and-reasoning-effort-can-clear-model ()
+  (let ((codex-ide-model "gpt-5.4")
+        (codex-ide-reasoning-effort "medium"))
+    (codex-ide-set-model-and-reasoning-effort
+     "" "low" 'future-sessions)
+    (should-not codex-ide-model)
+    (should (equal codex-ide-reasoning-effort "low"))))
+
 (ert-deftest codex-ide-config-applies-to-live-session-p-flags-turn-scoped-settings ()
   (should (codex-ide-config-applies-to-live-session-p 'approval-policy))
   (should (codex-ide-config-applies-to-live-session-p 'sandbox-mode))

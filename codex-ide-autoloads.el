@@ -478,6 +478,13 @@ while 1 would fully replace the background with the foreground color.")
 "Move point to the next focal point in a Codex session buffer." t)
 (autoload 'codex-ide-session-mode-nav-backward "codex-ide-session-mode"
 "Move point to the previous focal point in a Codex session buffer." t)
+(autoload 'codex-ide-session-transcript-set-detail-level "codex-ide-session-mode"
+"Set the current session transcript detail LEVEL.
+Interactively, prompt for LEVEL.  LEVEL must be `standard' or `compact'.
+
+(fn LEVEL)" t)
+(autoload 'codex-ide-session-transcript-toggle-detail-level "codex-ide-session-mode"
+"Toggle the current session transcript between standard and compact detail." t)
 (autoload 'codex-ide-session-mode "codex-ide-session-mode"
 "Major mode for Codex app-server session buffers.
 
@@ -489,6 +496,8 @@ while 1 would fully replace the background with the foreground color.")
 
 * \\[codex-ide-apply-config-preset] prompts for and applies a config preset.
 
+* \\[codex-ide-session-transcript-toggle-detail-level] toggles standard/compact transcript detail.
+
 * \\[codex-ide-previous-prompt-line] and \\[codex-ide-next-prompt-line] move between prompt lines.
 
 * \\[codex-ide-session-mode-nav-forward] and \\[codex-ide-session-mode-nav-backward] move between transcript focal points, including
@@ -498,6 +507,11 @@ When point is in the active prompt, `codex-ide-session-prompt-minor-mode'
 adds these bindings:
 
 * \\<codex-ide-session-prompt-minor-mode-map>\\[codex-ide-previous-prompt-history] and \\[codex-ide-next-prompt-history] move through prompt history.
+
+When the active prompt begins with a slash,
+`codex-ide-session-slash-command-minor-mode' adds this binding:
+
+* \\<codex-ide-session-slash-command-minor-mode-map>\\[codex-ide-slash-command-complete-or-submit] completes or submits the slash command.
 
 In addition to any hooks its parent mode `text-mode' might have run,
 this mode runs the hook `codex-ide-session-mode-hook', as the final or
@@ -517,6 +531,13 @@ penultimate step during initialization." t)
 
 ;;; Generated autoloads from codex-ide-config.el
 
+(autoload 'codex-ide-set-model-and-reasoning-effort "codex-ide-config"
+"Prompt for a Codex model, then prompt for reasoning effort, and apply both.
+When MODEL is an empty string, clear the configured model.  SESSION defaults to
+the session associated with the current buffer.  Interactively, prompt for the
+target scope after reading both values.
+
+(fn &optional MODEL REASONING-EFFORT SCOPE SESSION)" t)
 (register-definition-prefixes "codex-ide-config" '("codex-ide-config-"))
 
 
@@ -528,11 +549,11 @@ penultimate step during initialization." t)
 ;;; Generated autoloads from codex-ide-diff-view.el
 
 (autoload 'codex-ide-session-diff-open "codex-ide-diff-view"
-  "Open or reuse the canonical session diff buffer for SESSION.
+"Open or reuse the canonical session diff buffer for SESSION.
 
 (fn &optional SESSION)" t)
 (autoload 'codex-ide-diff-open-combined-turn-buffer "codex-ide-diff-view"
-  "Open the combined diff for SESSION TURN-ID in a standalone diff buffer.
+"Open the combined diff for SESSION TURN-ID in a standalone diff buffer.
 When called interactively with nil TURN-ID, use the last transcript turn at or
 above point.  Otherwise, when TURN-ID is nil, prefer the running turn and
 otherwise use the most recent completed turn.
@@ -576,6 +597,66 @@ otherwise use the most recent completed turn.
 (autoload 'codex-ide-submit-clipboard-image "codex-ide-images"
 "Attach the macOS clipboard image to the current Codex prompt." t)
 (register-definition-prefixes "codex-ide-images" '("codex-ide--"))
+
+
+
+;;; Generated autoloads from codex-ide-slash-command.el
+
+(autoload 'codex-ide-slash-command-set-model "codex-ide-slash-command"
+"Set the Codex model and reasoning effort for the current session.
+
+(fn &optional MODEL REASONING-EFFORT)" t)
+(autoload 'codex-ide-slash-command-set-reasoning-effort "codex-ide-slash-command"
+"Set the reasoning effort for the current session.
+
+(fn &optional VALUE)" t)
+(autoload 'codex-ide-slash-command-toggle-fast "codex-ide-slash-command"
+"Toggle fast mode for the current session." t)
+(autoload 'codex-ide-slash-command-complete-or-submit "codex-ide-slash-command"
+"Complete the active slash command or submit it when complete." t)
+(register-definition-prefixes "codex-ide-slash-command" '("codex-ide-slash-command"))
+
+
+;;; Generated autoloads from codex-ide-loop.el
+
+(autoload 'codex-ide-loop-nav-forward "codex-ide-loop"
+"Move to the next interactive button in the current loop buffer." t)
+(autoload 'codex-ide-loop-nav-backward "codex-ide-loop"
+"Move to the previous interactive button in the current loop buffer." t)
+(autoload 'codex-ide-loop-create "codex-ide-loop"
+"Create or show a loop buffer for the current Codex session.
+INTERVAL is read interactively and accepts suffixes supported by
+`codex-ide-loop-default-interval'.  The new loop starts paused.
+
+(fn INTERVAL)" t)
+(autoload 'codex-ide-loop-jump-or-create "codex-ide-loop"
+"Jump to this session's loop buffer, or create one with INTERVAL.
+
+This command is session-buffer scoped.  It reuses the loop associated with the
+current Codex session buffer when one exists.  Otherwise, it prompts for an
+interval unless INTERVAL was supplied programmatically.
+
+(fn &optional INTERVAL)" t)
+(autoload 'codex-ide-loop-start "codex-ide-loop"
+"Start or resume the current Codex loop." t)
+(autoload 'codex-ide-loop-pause "codex-ide-loop"
+"Pause the current Codex loop." t)
+(autoload 'codex-ide-loop-set-interval "codex-ide-loop"
+"Set the current Codex loop interval to INTERVAL.
+
+When called interactively, prompt for an interval using the current loop
+interval as the default.  Active loops are rescheduled from now.
+
+(fn &optional INTERVAL)" t)
+(autoload 'codex-ide-loop-stop "codex-ide-loop"
+"Stop and detach the current Codex loop." t)
+(autoload 'codex-ide-loop-send-now "codex-ide-loop"
+"Submit the current loop prompt immediately when the session is ready." t)
+(autoload 'codex-ide-loop-jump-to-session "codex-ide-loop"
+"Show the session buffer attached to the current Codex loop." t)
+(autoload 'codex-ide-loop-jump-to-loop "codex-ide-loop"
+"Show the loop buffer attached to the current Codex session." t)
+(register-definition-prefixes "codex-ide-loop" '("codex-ide-loop-"))
 
 
 ;;; Generated autoloads from codex-ide-monitor.el
