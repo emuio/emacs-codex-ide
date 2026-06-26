@@ -311,7 +311,7 @@
   (should (eq (lookup-key codex-ide-session-buffer-list-mode-map (kbd "U"))
               #'codex-ide-session-buffer-list-unmark-all))
   (should (eq (lookup-key codex-ide-session-buffer-list-mode-map (kbd "M"))
-              #'codex-ide-session-buffer-list-monitor-marked))
+              #'codex-ide-session-buffer-list-monitor-marked-or-all))
   (should-not (lookup-key codex-ide-session-buffer-list-mode-map (kbd "D")))
   (should (eq (lookup-key codex-ide-session-buffer-list-mode-map (kbd "RET"))
               #'codex-ide-session-list-display-session-at-point))
@@ -550,6 +550,29 @@
          (should all-monitor-called)
          (should-not captured-sessions)
          (should (codex-ide-session-p session)))))))
+
+(ert-deftest codex-ide-session-buffer-list-monitor-key-falls-back-without-marks ()
+  (let* ((root-dir (codex-ide-test--make-temp-project))
+         (project-dir (expand-file-name "alpha" root-dir)))
+    (make-directory project-dir t)
+    (codex-ide-test-with-fixture root-dir
+      (codex-ide-test-with-fake-processes
+       (let ((session nil)
+             (all-monitor-called nil))
+         (let ((default-directory project-dir))
+           (setq session (codex-ide--create-process-session)))
+         (codex-ide-test-with-empty-thread-list
+          (codex-ide-session-buffer-list))
+         (with-current-buffer "*Codex Session Buffers*"
+           (goto-char (point-min))
+           (search-forward (buffer-name (codex-ide-session-buffer session)))
+           (beginning-of-line)
+           (cl-letf (((symbol-function 'codex-ide-monitor-layout)
+                      (lambda (&optional _focused-session)
+                        (setq all-monitor-called t))))
+             (call-interactively
+              (lookup-key codex-ide-session-buffer-list-mode-map (kbd "M")))))
+         (should all-monitor-called))))))
 
 (ert-deftest codex-ide-session-list-display-session-at-point-other-window-forwards-pop-up-action ()
   (let ((captured-action nil)

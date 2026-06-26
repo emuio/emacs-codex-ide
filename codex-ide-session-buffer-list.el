@@ -38,7 +38,7 @@
             #'codex-ide-session-buffer-list-unmark-all)
 (define-key codex-ide-session-buffer-list-mode-map
             (kbd "M")
-            #'codex-ide-session-buffer-list-monitor-marked)
+            #'codex-ide-session-buffer-list-monitor-marked-or-all)
 
 (define-derived-mode codex-ide-session-buffer-list-mode codex-ide-session-list-mode
   "Codex-Buffers"
@@ -225,7 +225,7 @@ Keys are cons cells of the form `(DIRECTORY . THREAD-ID)'."
 
 ;;;###autoload
 (defun codex-ide-session-buffer-list-monitor-marked-or-all ()
-  "Open a monitor layout for marked sessions, or all live sessions."
+  "Open a monitor layout for marked sessions, or recent live sessions."
   (interactive)
   (let ((marked-sessions
          (codex-ide-session-buffer-list--marked-live-sessions)))

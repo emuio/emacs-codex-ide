@@ -301,7 +301,7 @@ Decode JSON PAYLOAD, dispatch a bridge tool call, and return JSON.
   "Show a tabulated list of live Codex session buffers." t)
 (autoload 'codex-ide-session-buffer-list-monitor-marked-or-all
   "codex-ide-session-buffer-list"
-  "Open a monitor layout for marked sessions, or all live sessions." t)
+  "Open a monitor layout for marked sessions, or recent live sessions." t)
 (register-definition-prefixes "codex-ide-session-buffer-list" '("codex-ide-session-buffer-list-"))
 
 

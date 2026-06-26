@@ -39,7 +39,7 @@
   "Show a tabulated list of live Codex session buffers." t)
 (autoload 'codex-ide-session-buffer-list-monitor-marked-or-all
   "codex-ide-session-buffer-list"
-  "Open a monitor layout for marked sessions, or all live sessions." t)
+  "Open a monitor layout for marked sessions, or recent live sessions." t)
 (autoload 'codex-ide-status "codex-ide-status-mode"
   "Show the Codex status buffer for the current project." t)
 (autoload 'codex-ide-session-diff-open "codex-ide-diff-view"
