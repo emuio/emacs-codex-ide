@@ -7988,6 +7988,29 @@
           (should (string-match-p "printf 'hello\\\\n'" buffer-text))
           (should (string-match-p "output: 1 line \\[expand\\]" buffer-text))))))))
 
+(ert-deftest codex-ide-restore-thread-read-transcript-command-fast-path-clears-pending-output ()
+  (let* ((project-dir (codex-ide-test--make-temp-project))
+         (session nil)
+         (thread-read
+          `((thread . ((id . "thread-restore-command-pending")
+                       (turns . (((id . "turn-1")
+                                  (items . (((type . "commandExecution")
+                                             (id . "item-command-pending")
+                                             (command . "printf 'hello\\n'")
+                                             (cwd . ,project-dir)
+                                             (aggregatedOutput . "hello\n")
+                                             (exitCode . 0)
+                                             (status . "completed"))))))))))))
+    (codex-ide-test-with-fixture
+     project-dir
+     (codex-ide-test-with-fake-processes
+      (setq session (codex-ide--create-process-session))
+      (should (codex-ide--restore-thread-read-transcript session thread-read))
+      (with-current-buffer (codex-ide-session-buffer session)
+        (should (string-match-p "\\* Ran command" (buffer-string)))
+        (should-not (equal (codex-ide-test--input-placeholder-text session)
+                           "Working...")))))))
+
 (ert-deftest codex-ide-restore-thread-read-transcript-inhibits-redisplay-while-replaying ()
   (let* ((project-dir (codex-ide-test--make-temp-project))
          (session nil)

@@ -43,6 +43,7 @@
 (require 'codex-ide-approvals-data)
 (require 'codex-ide-context)
 (require 'codex-ide-core)
+(require 'codex-ide-mention)
 (require 'codex-ide-header)
 (require 'codex-ide-protocol)
 (require 'codex-ide-diff-data)
@@ -2251,7 +2252,11 @@ DIRECTION should be -1 for older history and 1 for newer history."
             (setf (codex-ide-session-prompt-history-index session) nil)
             (codex-ide--replace-current-input session ""))
         (setf (codex-ide-session-prompt-history-index session) index)
-        (codex-ide--replace-current-input session (nth index history))))))
+        (codex-ide--replace-current-input
+         session
+         (codex-ide-mention-decode-history
+          (nth index history)
+          session))))))
 
 (defun codex-ide--goto-prompt-line (direction)
   "Move point to another user prompt line in DIRECTION.
@@ -5309,6 +5314,7 @@ Each entry is either (:shell COMMAND) or (:detail TEXT)."
       (let ((codex-ide--current-agent-item-type item-type))
         (unless (codex-ide-session-output-prefix-inserted session)
           (codex-ide--begin-turn-display session nil t))
+        (codex-ide--clear-pending-output-indicator session)
         (when-let* ((range (codex-ide--insert-restored-command-start-block
                             session summary details)))
           (setq anchor-marker
@@ -6437,6 +6443,11 @@ compatibility with older app-server payloads and global notifications."
 	   (codex-ide--update-header-line session)
 	   (codex-ide--schedule-live-usage-refresh session)
            (codex-ide-usage-note-updated session 'quota)))
+        ("skills/changed"
+         (codex-ide-log-message
+          session
+          "Skills changed; refreshing skill completion cache")
+         (codex-ide-mention-refresh-skill-cache-after-change session))
 	("turn/started"
 	 (codex-ide--remember-reasoning-effort session params)
 	 (codex-ide--remember-or-request-model-name session params)
