@@ -71,6 +71,8 @@
 (declare-function codex-ide-log-message "codex-ide-log" (session format-string &rest args))
 
 (defvar codex-ide-log-max-lines)
+(defvar codex-ide-agent-message-delta-coalesce-delay-seconds)
+(defvar codex-ide-command-output-delta-coalesce-delay-seconds)
 (defvar codex-ide-renderer-render-markdown-during-streaming)
 (defvar codex-ide-renderer-markdown-render-max-chars)
 (defvar codex-ide-renderer--markdown-table-max-width-override)
@@ -3575,6 +3577,61 @@ When OVERLAY is folded, remove the body text from the transcript buffer."
        (or (overlay-get overlay :display-text) ""))
       (codex-ide--ensure-active-input-prompt-spacing session))))
 
+(defun codex-ide--command-output-delta-coalescing-enabled-p (session)
+  "Return non-nil when live command output deltas should be coalesced."
+  (and session
+       (numberp codex-ide-command-output-delta-coalesce-delay-seconds)
+       (> codex-ide-command-output-delta-coalesce-delay-seconds 0)
+       (process-live-p (codex-ide-session-process session))))
+
+(defun codex-ide--cancel-command-output-render (session &optional item-id)
+  "Cancel pending command output render timers for SESSION.
+When ITEM-ID is non-nil, cancel only that item."
+  (when session
+    (let ((states (codex-ide-session-item-states session)))
+      (when (hash-table-p states)
+        (maphash
+         (lambda (stored-item-id state)
+           (when (or (null item-id)
+                     (equal item-id stored-item-id))
+             (when-let* ((timer (plist-get state :command-output-render-timer)))
+               (when (timerp timer)
+                 (cancel-timer timer)))
+             (puthash
+              stored-item-id
+              (plist-put state :command-output-render-timer nil)
+              states)))
+         states)))))
+
+(defun codex-ide--flush-command-output-render (&optional session item-id)
+  "Flush pending command output render for SESSION and ITEM-ID."
+  (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
+  (when (and session item-id)
+    (when-let* ((state (codex-ide--item-state session item-id)))
+      (codex-ide--cancel-command-output-render session item-id)
+      (when (or (plist-get state :summary)
+                (plist-get state :command-output-overlay)
+                (plist-get state :item-result-overlay))
+        (codex-ide--render-command-output-state session item-id)))))
+
+(defun codex-ide--schedule-command-output-render (session item-id)
+  "Schedule command output rendering for ITEM-ID in SESSION."
+  (if (not (codex-ide--command-output-delta-coalescing-enabled-p session))
+      (codex-ide--render-command-output-state session item-id)
+    (let ((state (codex-ide--item-state session item-id)))
+      (unless (timerp (plist-get state :command-output-render-timer))
+        (setq state
+              (plist-put
+               state
+               :command-output-render-timer
+               (run-at-time
+                (max 0 codex-ide-command-output-delta-coalesce-delay-seconds)
+                nil
+                #'codex-ide--flush-command-output-render
+                session
+                item-id)))
+        (codex-ide--put-item-state session item-id state)))))
+
 (defun codex-ide--persist-result-overlay-state
     (session item-id &optional full-text)
   "Persist durable result text for ITEM-ID from SESSION onto its overlay.
@@ -4722,8 +4779,10 @@ When COMPLETION is non-nil, render completion-specific state details."
         ("agentMessage"
          (codex-ide--render-current-agent-message-markdown session item-id t))
         ("commandExecution"
-         (let ((output-text (or (codex-ide--command-output-state-full-text state)
-                                (alist-get 'aggregatedOutput item))))
+         (codex-ide--cancel-command-output-render session item-id)
+         (setq state (codex-ide--item-state session item-id))
+         (let ((output-text (or (alist-get 'aggregatedOutput item)
+                                (codex-ide--command-output-state-full-text state))))
            (codex-ide--complete-command-output-block session item-id output-text)
            (codex-ide--render-command-completion-details
             session item output-text)))
@@ -4847,6 +4906,107 @@ When COMPLETION is non-nil, render completion-specific state details."
        (copy-marker (codex-ide-session-current-message-start-marker session)))
       (setf (codex-ide-session-current-message-item-id session) item-id
             (codex-ide-session-current-message-prefix-inserted session) t))))
+
+(defun codex-ide--agent-message-delta-coalescing-enabled-p (session)
+  "Return non-nil when live assistant deltas should be coalesced for SESSION."
+  (and session
+       (numberp codex-ide-agent-message-delta-coalesce-delay-seconds)
+       (> codex-ide-agent-message-delta-coalesce-delay-seconds 0)
+       (process-live-p (codex-ide-session-process session))))
+
+(defun codex-ide--cancel-agent-message-delta-flush (session)
+  "Cancel SESSION's pending assistant message delta flush timer."
+  (when-let* ((timer (codex-ide--session-metadata-get
+                      session
+                      :agent-message-delta-flush-timer)))
+    (when (timerp timer)
+      (cancel-timer timer)))
+  (codex-ide--session-metadata-put
+   session
+   :agent-message-delta-flush-timer
+   nil))
+
+(defun codex-ide--schedule-agent-message-delta-flush (session item-id)
+  "Schedule a pending assistant message delta flush for SESSION and ITEM-ID."
+  (when (and session
+             (codex-ide--session-metadata-get
+              session
+              :agent-message-delta-text)
+             (not (timerp (codex-ide--session-metadata-get
+                           session
+                           :agent-message-delta-flush-timer))))
+    (codex-ide--session-metadata-put
+     session
+     :agent-message-delta-flush-timer
+     (run-at-time
+      (max 0 codex-ide-agent-message-delta-coalesce-delay-seconds)
+      nil
+      #'codex-ide--flush-agent-message-delta
+      session
+      item-id))))
+
+(defun codex-ide--flush-agent-message-delta (&optional session item-id)
+  "Flush pending assistant message delta text for SESSION.
+When ITEM-ID is non-nil, flush only if it matches the pending item."
+  (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
+  (when session
+    (let ((pending-item-id (codex-ide--session-metadata-get
+                            session
+                            :agent-message-delta-item-id))
+          (text (codex-ide--session-metadata-get
+                 session
+                 :agent-message-delta-text)))
+      (when (and text
+                 (or (null item-id)
+                     (equal item-id pending-item-id)))
+        (codex-ide--cancel-agent-message-delta-flush session)
+        (codex-ide--session-metadata-put
+         session
+         :agent-message-delta-item-id
+         nil)
+        (codex-ide--session-metadata-put
+         session
+         :agent-message-delta-text
+         nil)
+        (let ((buffer (codex-ide-session-buffer session))
+              (codex-ide--current-agent-item-type "agentMessage"))
+          (codex-ide--ensure-agent-message-prefix session pending-item-id)
+          (codex-ide--append-agent-text buffer text)
+          (when codex-ide-renderer-render-markdown-during-streaming
+            (codex-ide--render-current-agent-message-markdown-streaming
+             session
+             pending-item-id)))))))
+
+(defun codex-ide--queue-agent-message-delta (session item-id delta)
+  "Queue or render assistant message DELTA for SESSION and ITEM-ID."
+  (if (or (string-empty-p delta)
+          (not (codex-ide--agent-message-delta-coalescing-enabled-p session)))
+      (let ((buffer (codex-ide-session-buffer session)))
+        (codex-ide--ensure-agent-message-prefix session item-id)
+        (codex-ide--append-agent-text buffer delta)
+        (when codex-ide-renderer-render-markdown-during-streaming
+          (codex-ide--render-current-agent-message-markdown-streaming
+           session
+           item-id)))
+    (let ((pending-item-id (codex-ide--session-metadata-get
+                            session
+                            :agent-message-delta-item-id))
+          (pending-text (codex-ide--session-metadata-get
+                         session
+                         :agent-message-delta-text)))
+      (when (and pending-item-id
+                 (not (equal pending-item-id item-id)))
+        (codex-ide--flush-agent-message-delta session pending-item-id)
+        (setq pending-text nil))
+      (codex-ide--session-metadata-put
+       session
+       :agent-message-delta-item-id
+       item-id)
+      (codex-ide--session-metadata-put
+       session
+       :agent-message-delta-text
+       (concat pending-text delta))
+      (codex-ide--schedule-agent-message-delta-flush session item-id))))
 
 (defun codex-ide--render-current-agent-message-markdown
     (&optional session item-id allow-trailing-tables)
@@ -6512,12 +6672,7 @@ compatibility with older app-server payloads and global notifications."
 		"Agent delta for item %s (%d chars)"
 		item-id
 		(length delta)))
-             (codex-ide--ensure-agent-message-prefix session item-id)
-             (codex-ide--append-agent-text buffer delta)
-             (when codex-ide-renderer-render-markdown-during-streaming
-               (codex-ide--render-current-agent-message-markdown-streaming
-		session
-		item-id)))))
+             (codex-ide--queue-agent-message-delta session item-id delta))))
 	("item/commandExecution/outputDelta"
 	 (let ((item-id (alist-get 'itemId params))
                (delta (or (alist-get 'delta params) "")))
@@ -6534,7 +6689,7 @@ compatibility with older app-server payloads and global notifications."
                            delta)))
                (if (or (plist-get state :summary)
                        (plist-get state :command-output-overlay))
-                   (codex-ide--render-command-output-state session item-id)
+                   (codex-ide--schedule-command-output-render session item-id)
 		 (codex-ide--put-item-state
                   session
                   item-id
@@ -6578,6 +6733,9 @@ compatibility with older app-server payloads and global notifications."
 	 (codex-ide--render-reasoning-delta session params))
 	("item/completed"
 	 (when-let* ((item (alist-get 'item params)))
+           (codex-ide--flush-agent-message-delta
+            session
+            (alist-get 'id item))
            (when (codex-ide--remember-or-request-model-name session item)
              (codex-ide--update-header-line session))
            (codex-ide--check-reported-turn-config
@@ -6606,6 +6764,7 @@ compatibility with older app-server payloads and global notifications."
             turn-id)
            (if turn-id
                (progn
+		 (codex-ide--flush-agent-message-delta session)
 		 (codex-ide--mark-current-turn-diff-completed session)
 		 (codex-ide-session-diff-note-session-updated session)
 		 (when interrupted

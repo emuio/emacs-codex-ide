@@ -143,6 +143,28 @@ When nil or zero, busy prompt help displays its text unchanged."
   :group 'codex-ide)
 
 ;;;###autoload
+(defcustom codex-ide-agent-message-delta-coalesce-delay-seconds 0.05
+  "Seconds to coalesce live assistant message deltas before rendering.
+When nil or zero, assistant deltas render immediately."
+  :type '(choice (const :tag "Disabled" nil)
+                 (number :tag "Seconds"))
+  :safe (lambda (value)
+          (or (null value)
+              (and (numberp value) (>= value 0))))
+  :group 'codex-ide)
+
+;;;###autoload
+(defcustom codex-ide-command-output-delta-coalesce-delay-seconds 0.05
+  "Seconds to coalesce live command output deltas before rendering.
+When nil or zero, command output deltas render immediately."
+  :type '(choice (const :tag "Disabled" nil)
+                 (number :tag "Seconds"))
+  :safe (lambda (value)
+          (or (null value)
+              (and (numberp value) (>= value 0))))
+  :group 'codex-ide)
+
+;;;###autoload
 (defcustom codex-ide-status-placeholder-text-alist
   '(("approval" . "Seeking approval...")
     ("interrupting" . "Interrupting..."))

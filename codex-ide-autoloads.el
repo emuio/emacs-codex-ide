@@ -57,6 +57,16 @@ Set to nil to disable thumbnail previews.")
 "Seconds between animated trailing ellipsis frames in busy prompt help.
 When nil or zero, busy prompt help displays its text unchanged.")
 (custom-autoload 'codex-ide-placeholder-ellipsis-animation-interval "codex-ide" t)
+(defvar codex-ide-agent-message-delta-coalesce-delay-seconds 0.05
+"Seconds to coalesce live assistant message deltas before rendering.
+When nil or zero, assistant deltas render immediately.")
+(custom-autoload 'codex-ide-agent-message-delta-coalesce-delay-seconds "codex-ide" t)
+(put 'codex-ide-agent-message-delta-coalesce-delay-seconds 'safe-local-variable (lambda (value) (or (null value) (and (numberp value) (>= value 0)))))
+(defvar codex-ide-command-output-delta-coalesce-delay-seconds 0.05
+"Seconds to coalesce live command output deltas before rendering.
+When nil or zero, command output deltas render immediately.")
+(custom-autoload 'codex-ide-command-output-delta-coalesce-delay-seconds "codex-ide" t)
+(put 'codex-ide-command-output-delta-coalesce-delay-seconds 'safe-local-variable (lambda (value) (or (null value) (and (numberp value) (>= value 0)))))
 (defvar codex-ide-status-placeholder-text-alist '(("approval" . "Seeking approval...") ("interrupting" . "Interrupting..."))
 "Alist mapping Codex session statuses to active prompt placeholder text.
 
