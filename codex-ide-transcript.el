@@ -6470,6 +6470,8 @@ still records LABEL."
   (let ((id (alist-get 'id message))
         (method (alist-get 'method message))
         (params (alist-get 'params message)))
+    (codex-ide--flush-agent-message-delta session)
+    (codex-ide--flush-command-output-render session)
     (codex-ide-log-message session "Received server request %s (id=%s)" method id)
     (pcase method
       ((or "elicitation/create"

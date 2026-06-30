@@ -702,9 +702,13 @@ protocol requests such as thread listing."
 (defun codex-ide--process-sentinel (process event)
   "Handle app-server PROCESS EVENT."
   (when-let* ((session (process-get process 'codex-session)))
-    (let ((buffer (codex-ide-session-buffer session)))
+    (let ((buffer (codex-ide-session-buffer session))
+          (live (process-live-p process)))
       (codex-ide-log-message session "Process event: %s" (string-trim event))
-      (if (process-live-p process)
+      (unless live
+        (codex-ide--flush-agent-message-delta session)
+        (codex-ide--flush-command-output-render session))
+      (if live
           (progn
             (codex-ide--set-session-status
              session
@@ -722,7 +726,7 @@ protocol requests such as thread listing."
                       (codex-ide--session-metadata-get session :stderr-tail))
                 "Codex process exited")))
           (codex-ide--recover-from-session-error session classification)))
-      (unless (process-live-p process)
+      (unless live
         (codex-ide-log-message session "Process exited")
         (codex-ide--cleanup-session session)))))
 
