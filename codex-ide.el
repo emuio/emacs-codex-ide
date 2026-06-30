@@ -165,6 +165,30 @@ When nil or zero, command output deltas render immediately."
   :group 'codex-ide)
 
 ;;;###autoload
+(defcustom codex-ide-process-filter-max-lines-per-tick 32
+  "Maximum app-server output lines processed by one drain timer tick."
+  :type 'integer
+  :safe (lambda (value)
+          (and (integerp value) (> value 0)))
+  :group 'codex-ide)
+
+;;;###autoload
+(defcustom codex-ide-process-filter-max-milliseconds-per-tick 20
+  "Maximum milliseconds spent draining app-server output in one timer tick."
+  :type 'integer
+  :safe (lambda (value)
+          (and (integerp value) (> value 0)))
+  :group 'codex-ide)
+
+;;;###autoload
+(defcustom codex-ide-process-filter-drain-delay-seconds 0.01
+  "Seconds to wait before draining queued app-server output lines."
+  :type 'number
+  :safe (lambda (value)
+          (and (numberp value) (>= value 0)))
+  :group 'codex-ide)
+
+;;;###autoload
 (defcustom codex-ide-status-placeholder-text-alist
   '(("approval" . "Seeking approval...")
     ("interrupting" . "Interrupting..."))

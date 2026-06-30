@@ -57,6 +57,9 @@
 (defvar codex-ide--cli-available nil
   "Whether the Codex CLI has been detected successfully.")
 (defvar codex-ide--current-transcript-log-marker)
+(defvar codex-ide-process-filter-drain-delay-seconds)
+(defvar codex-ide-process-filter-max-lines-per-tick)
+(defvar codex-ide-process-filter-max-milliseconds-per-tick)
 
 (declare-function codex-ide-delete-session-thread "codex-ide-delete-session-thread"
                   (thread-id &optional skip-confirmation))
@@ -167,6 +170,8 @@
       (codex-ide-log-message session "Cleaning up session state"))
     (when session
       (codex-ide--delete-session-local-image-temp-files session))
+    (when session
+      (codex-ide--cancel-process-line-drain session))
     (when session
       (codex-ide--cancel-agent-message-delta-flush session)
       (codex-ide--cancel-command-output-render session))
@@ -687,17 +692,125 @@ protocol requests such as thread listing."
       (codex-ide-log-message session "Processing incoming line: %s" line)
       (codex-ide--handle-response session message)))))
 
+(defun codex-ide--process-line-queue (session)
+  "Return SESSION's queued complete app-server output lines."
+  (codex-ide--session-metadata-get session :process-line-queue))
+
+(defun codex-ide--set-process-line-queue (session queue)
+  "Set SESSION's queued complete app-server output lines to QUEUE."
+  (codex-ide--session-metadata-put session :process-line-queue queue))
+
+(defun codex-ide--enqueue-process-lines (session lines)
+  "Append complete app-server output LINES to SESSION's drain queue."
+  (codex-ide--set-process-line-queue
+   session
+   (nconc (codex-ide--process-line-queue session) lines)))
+
+(defun codex-ide--process-line-drain-delay ()
+  "Return the delay used when scheduling app-server output drains."
+  (max 0.001
+       (or (and (numberp codex-ide-process-filter-drain-delay-seconds)
+                codex-ide-process-filter-drain-delay-seconds)
+           0.01)))
+
+(defun codex-ide--cancel-process-line-drain (session)
+  "Cancel SESSION's pending app-server output drain timer, if any."
+  (when-let* ((timer (codex-ide--session-metadata-get
+                      session
+                      :process-line-drain-timer)))
+    (when (timerp timer)
+      (cancel-timer timer)))
+  (codex-ide--session-metadata-put session :process-line-drain-timer nil)
+  (codex-ide--session-metadata-put session :process-line-draining nil)
+  (codex-ide--set-process-line-queue session nil))
+
+(defun codex-ide--schedule-process-line-drain (session)
+  "Schedule a bounded app-server output drain for SESSION."
+  (when (and session
+             (codex-ide--process-line-queue session)
+             (not (codex-ide--session-metadata-get
+                   session
+                   :process-line-draining))
+             (not (timerp (codex-ide--session-metadata-get
+                           session
+                           :process-line-drain-timer))))
+    (codex-ide--session-metadata-put
+     session
+     :process-line-drain-timer
+     (run-at-time
+      (codex-ide--process-line-drain-delay)
+      nil
+      #'codex-ide--drain-process-line-queue
+      session))))
+
+(defun codex-ide--drain-process-line-queue (&optional session)
+  "Process a bounded batch of queued app-server output lines for SESSION."
+  (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
+  (when (and session
+             (not (codex-ide--session-metadata-get
+                   session
+                   :process-line-draining)))
+    (codex-ide--session-metadata-put session :process-line-drain-timer nil)
+    (codex-ide--session-metadata-put session :process-line-draining t)
+    (let ((start-time (float-time))
+          (processed 0)
+          (max-lines (max 1
+                          (or codex-ide-process-filter-max-lines-per-tick
+                              32)))
+          (max-ms (max 1
+                       (or codex-ide-process-filter-max-milliseconds-per-tick
+                           20))))
+      (unwind-protect
+          (while (and (codex-ide--process-line-queue session)
+                      (< processed max-lines)
+                      (or (= processed 0)
+                          (< (codex-ide--elapsed-ms start-time) max-ms)))
+            (let* ((queue (codex-ide--process-line-queue session))
+                   (line (car queue)))
+              (codex-ide--set-process-line-queue session (cdr queue))
+              (setq processed (1+ processed))
+              (codex-ide--process-message session line)))
+        (codex-ide--session-metadata-put session :process-line-draining nil)))
+    (when (codex-ide--process-line-queue session)
+      (codex-ide--schedule-process-line-drain session))))
+
+(defun codex-ide--flush-process-line-queue (&optional session)
+  "Process all queued app-server output lines for SESSION immediately."
+  (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
+  (when session
+    (when-let* ((timer (codex-ide--session-metadata-get
+                        session
+                        :process-line-drain-timer)))
+      (when (timerp timer)
+        (cancel-timer timer)))
+    (codex-ide--session-metadata-put session :process-line-drain-timer nil)
+    (unless (codex-ide--session-metadata-get
+             session
+             :process-line-draining)
+      (codex-ide--session-metadata-put session :process-line-draining t)
+      (unwind-protect
+          (while (codex-ide--process-line-queue session)
+            (let* ((queue (codex-ide--process-line-queue session))
+                   (line (car queue)))
+              (codex-ide--set-process-line-queue session (cdr queue))
+              (codex-ide--process-message session line)))
+        (codex-ide--session-metadata-put session :process-line-draining nil)))))
+
 (defun codex-ide--process-filter (process chunk)
   "Handle app-server PROCESS output CHUNK."
   (when-let* ((session (process-get process 'codex-session)))
     (codex-ide-log-message session "Received process chunk (%d chars)" (length chunk))
     (let* ((pending (concat (or (codex-ide-session-partial-line session) "")
                             chunk))
-           (lines (split-string pending "\n")))
+           (lines (split-string pending "\n"))
+           (complete-lines (seq-filter
+                            (lambda (line)
+                              (not (string-empty-p line)))
+                            (butlast lines))))
       (setf (codex-ide-session-partial-line session) (car (last lines)))
-      (dolist (line (butlast lines))
-        (unless (string-empty-p line)
-          (codex-ide--process-message session line))))))
+      (when complete-lines
+        (codex-ide--enqueue-process-lines session complete-lines)
+        (codex-ide--schedule-process-line-drain session)))))
 
 (defun codex-ide--process-sentinel (process event)
   "Handle app-server PROCESS EVENT."
@@ -706,6 +819,7 @@ protocol requests such as thread listing."
           (live (process-live-p process)))
       (codex-ide-log-message session "Process event: %s" (string-trim event))
       (unless live
+        (codex-ide--flush-process-line-queue session)
         (codex-ide--flush-agent-message-delta session)
         (codex-ide--flush-command-output-render session))
       (if live

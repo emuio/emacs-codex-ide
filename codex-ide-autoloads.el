@@ -67,6 +67,18 @@ When nil or zero, assistant deltas render immediately.")
 When nil or zero, command output deltas render immediately.")
 (custom-autoload 'codex-ide-command-output-delta-coalesce-delay-seconds "codex-ide" t)
 (put 'codex-ide-command-output-delta-coalesce-delay-seconds 'safe-local-variable (lambda (value) (or (null value) (and (numberp value) (>= value 0)))))
+(defvar codex-ide-process-filter-max-lines-per-tick 32
+"Maximum app-server output lines processed by one drain timer tick.")
+(custom-autoload 'codex-ide-process-filter-max-lines-per-tick "codex-ide" t)
+(put 'codex-ide-process-filter-max-lines-per-tick 'safe-local-variable (lambda (value) (and (integerp value) (> value 0))))
+(defvar codex-ide-process-filter-max-milliseconds-per-tick 20
+"Maximum milliseconds spent draining app-server output in one timer tick.")
+(custom-autoload 'codex-ide-process-filter-max-milliseconds-per-tick "codex-ide" t)
+(put 'codex-ide-process-filter-max-milliseconds-per-tick 'safe-local-variable (lambda (value) (and (integerp value) (> value 0))))
+(defvar codex-ide-process-filter-drain-delay-seconds 0.01
+"Seconds to wait before draining queued app-server output lines.")
+(custom-autoload 'codex-ide-process-filter-drain-delay-seconds "codex-ide" t)
+(put 'codex-ide-process-filter-drain-delay-seconds 'safe-local-variable (lambda (value) (and (numberp value) (>= value 0))))
 (defvar codex-ide-status-placeholder-text-alist '(("approval" . "Seeking approval...") ("interrupting" . "Interrupting..."))
 "Alist mapping Codex session statuses to active prompt placeholder text.
 
