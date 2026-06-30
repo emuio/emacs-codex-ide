@@ -206,6 +206,59 @@
 							     (file-name-nondirectory
 							      (directory-file-name project-dir)))))))))))
 
+(ert-deftest codex-ide-cleanup-session-cancels-pending-stream-render-timers ()
+  (let ((project-dir (codex-ide-test--make-temp-project))
+        (codex-ide-agent-message-delta-coalesce-delay-seconds 0.05)
+        (codex-ide-command-output-delta-coalesce-delay-seconds 0.05)
+        (canceled nil))
+    (codex-ide-test-with-fixture
+     project-dir
+     (codex-ide-test-with-fake-processes
+      (let ((session (codex-ide--create-process-session)))
+        (codex-ide--begin-turn-display session)
+        (codex-ide--render-item-start
+         session
+         '((id . "call-1")
+           (type . "commandExecution")
+           (command . ["echo" "hello"])))
+        (with-current-buffer (codex-ide-session-buffer session)
+          (cl-letf (((symbol-function 'run-at-time)
+                     (lambda (_seconds _repeat function &rest _args)
+                       (cond
+                        ((eq function #'codex-ide--flush-agent-message-delta)
+                         'fake-agent-message-timer)
+                        ((eq function #'codex-ide--flush-command-output-render)
+                         'fake-command-output-timer)
+                        (t 'fake-other-timer))))
+                    ((symbol-function 'timerp)
+                     (lambda (timer)
+                       (memq timer '(fake-agent-message-timer
+                                     fake-command-output-timer
+                                     fake-other-timer))))
+                    ((symbol-function 'cancel-timer)
+                     (lambda (timer)
+                       (push timer canceled))))
+            (codex-ide--handle-notification
+             session
+             '((method . "item/agentMessage/delta")
+               (params . ((itemId . "msg-1")
+                          (delta . "Assistant text")))))
+            (codex-ide--handle-notification
+             session
+             '((method . "item/commandExecution/outputDelta")
+               (params . ((itemId . "call-1")
+                          (delta . "hello\n")))))
+            (codex-ide--put-item-state
+             session
+             "call-1"
+             (plist-put
+              (codex-ide--item-state session "call-1")
+              :command-output-render-timer
+              'fake-command-output-timer))
+            (codex-ide--cleanup-session session)
+            (should (memq 'fake-agent-message-timer canceled))
+            (should (memq 'fake-command-output-timer canceled)))))))))
+
 (ert-deftest codex-ide-create-process-session-skips-log-buffer-when-logging-disabled ()
   (let ((project-dir (codex-ide-test--make-temp-project)))
     (codex-ide-test-with-fixture project-dir
@@ -2744,6 +2797,42 @@
               session
               :agent-message-delta-flush-timer)))))))))
 
+(ert-deftest codex-ide-agent-delta-flushes-before-next-item-start ()
+  (let ((project-dir (codex-ide-test--make-temp-project))
+        (codex-ide-agent-message-delta-coalesce-delay-seconds 0.05))
+    (codex-ide-test-with-fixture
+     project-dir
+     (codex-ide-test-with-fake-processes
+      (let ((session (codex-ide--create-process-session)))
+        (codex-ide--insert-input-prompt session "submitted prompt")
+        (codex-ide--begin-turn-display session)
+        (with-current-buffer (codex-ide-session-buffer session)
+          (cl-letf (((symbol-function 'run-at-time)
+                     (lambda (&rest _args) 'fake-agent-message-timer))
+                    ((symbol-function 'timerp)
+                     (lambda (timer)
+                       (eq timer 'fake-agent-message-timer)))
+                    ((symbol-function 'cancel-timer)
+                     (lambda (_timer) nil)))
+            (codex-ide--handle-notification
+             session
+             '((method . "item/agentMessage/delta")
+               (params . ((itemId . "msg-1")
+                          (delta . "Before command.\n")))))
+            (should-not (string-match-p "Before command" (buffer-string)))
+            (codex-ide--handle-notification
+             session
+             '((method . "item/started")
+               (params . ((item . ((id . "call-1")
+                                   (type . "commandExecution")
+                                   (command . ["echo" "hi"])))))))
+            (save-excursion
+              (goto-char (point-min))
+              (search-forward "Before command.")
+              (let ((message-pos (match-beginning 0)))
+                (search-forward "* Ran command")
+                (should (< message-pos (match-beginning 0))))))))))))
+
 (ert-deftest codex-ide-agent-markdown-delta-separates-active-prompt-from-output ()
   (with-temp-buffer
     (codex-ide-session-mode)
@@ -2858,6 +2947,210 @@
               (should (equal (overlay-get overlay :result-full-text)
                              "hello\n")))
             (should (eq canceled 'fake-command-output-timer)))))))))
+
+(ert-deftest codex-ide-command-output-completion-keeps-streamed-output-over-partial-aggregate ()
+  (let ((project-dir (codex-ide-test--make-temp-project))
+        (codex-ide-command-output-delta-coalesce-delay-seconds 0.05)
+        (codex-ide-renderer-command-output-fold-on-start nil))
+    (codex-ide-test-with-fixture
+     project-dir
+     (codex-ide-test-with-fake-processes
+      (let ((session (codex-ide--create-process-session)))
+        (codex-ide--insert-input-prompt session "submitted prompt")
+        (codex-ide--begin-turn-display session)
+        (codex-ide--render-item-start
+         session
+         '((id . "call-1")
+           (type . "commandExecution")
+           (command . ["echo" "hello"])))
+        (with-current-buffer (codex-ide-session-buffer session)
+          (cl-letf (((symbol-function 'run-at-time)
+                     (lambda (&rest _args) 'fake-command-output-timer))
+                    ((symbol-function 'timerp)
+                     (lambda (timer)
+                       (eq timer 'fake-command-output-timer)))
+                    ((symbol-function 'cancel-timer)
+                     (lambda (_timer) nil)))
+            (codex-ide--handle-notification
+             session
+             '((method . "item/commandExecution/outputDelta")
+               (params . ((itemId . "call-1")
+                          (delta . "hello\n")))))
+            (codex-ide--handle-notification
+             session
+             '((method . "item/completed")
+               (params . ((item . ((id . "call-1")
+                                   (type . "commandExecution")
+                                   (status . "completed")
+                                   (exitCode . 0)
+                                   (aggregatedOutput . "hel")))))))
+            (goto-char (point-min))
+            (search-forward "output: 1 line [expand]")
+            (let ((overlay (get-char-property
+                            (match-beginning 0)
+                            codex-ide-item-result-overlay-property)))
+              (should (overlayp overlay))
+              (should (equal (overlay-get overlay :result-full-text)
+                             "hello\n"))))))))))
+
+(ert-deftest codex-ide-command-output-completion-refreshes-pending-stream-display ()
+  (let ((project-dir (codex-ide-test--make-temp-project))
+        (codex-ide-command-output-delta-coalesce-delay-seconds 0.05)
+        (codex-ide-renderer-command-output-fold-on-start nil))
+    (codex-ide-test-with-fixture
+     project-dir
+     (codex-ide-test-with-fake-processes
+      (let ((session (codex-ide--create-process-session)))
+        (codex-ide--insert-input-prompt session "submitted prompt")
+        (codex-ide--begin-turn-display session)
+        (codex-ide--render-item-start
+         session
+         '((id . "call-1")
+           (type . "commandExecution")
+           (command . ["echo" "hello"])))
+        (with-current-buffer (codex-ide-session-buffer session)
+          (cl-letf (((symbol-function 'run-at-time)
+                     (lambda (&rest _args) 'fake-command-output-timer))
+                    ((symbol-function 'timerp)
+                     (lambda (timer)
+                       (eq timer 'fake-command-output-timer)))
+                    ((symbol-function 'cancel-timer)
+                     (lambda (_timer) nil)))
+            (codex-ide--handle-notification
+             session
+             '((method . "item/commandExecution/outputDelta")
+               (params . ((itemId . "call-1")
+                          (delta . "hel")))))
+            (codex-ide--flush-command-output-render session "call-1")
+            (goto-char (point-min))
+            (search-forward "output: 1 line, streaming [fold]")
+            (let ((overlay (get-char-property
+                            (match-beginning 0)
+                            codex-ide-item-result-overlay-property)))
+              (should (string-match-p "hel"
+                                      (or (overlay-get overlay :display-text)
+                                          "")))
+              (codex-ide--handle-notification
+               session
+               '((method . "item/commandExecution/outputDelta")
+                 (params . ((itemId . "call-1")
+                            (delta . "lo\n")))))
+              (codex-ide--handle-notification
+               session
+               '((method . "item/completed")
+                 (params . ((item . ((id . "call-1")
+                                     (type . "commandExecution")
+                                     (status . "completed")
+                                     (exitCode . 0)))))))
+              (should (equal (overlay-get overlay :result-full-text)
+                             "hello\n"))
+              (should (string-match-p "hello"
+                                      (or (overlay-get overlay :display-text)
+                                          "")))))))))))
+
+(ert-deftest codex-ide-turn-completed-flushes-pending-command-output-render ()
+  (let ((project-dir (codex-ide-test--make-temp-project))
+        (codex-ide-command-output-delta-coalesce-delay-seconds 0.05)
+        (codex-ide-renderer-command-output-fold-on-start nil)
+        (canceled nil))
+    (codex-ide-test-with-fixture
+     project-dir
+     (codex-ide-test-with-fake-processes
+      (let ((session (codex-ide--create-process-session)))
+        (codex-ide--insert-input-prompt session "submitted prompt")
+        (with-current-buffer (codex-ide-session-buffer session)
+          (cl-letf (((symbol-function 'run-at-time)
+                     (lambda (&rest _args) 'fake-command-output-timer))
+                    ((symbol-function 'timerp)
+                     (lambda (timer)
+                       (eq timer 'fake-command-output-timer)))
+                    ((symbol-function 'cancel-timer)
+                     (lambda (timer)
+                       (setq canceled timer))))
+            (codex-ide--handle-notification
+             session
+             '((method . "turn/started")
+               (params . ((turn . ((id . "turn-1")))))))
+            (codex-ide--render-item-start
+             session
+             '((id . "call-1")
+               (type . "commandExecution")
+               (command . ["echo" "hello"])))
+            (codex-ide--handle-notification
+             session
+             '((method . "item/commandExecution/outputDelta")
+               (params . ((itemId . "call-1")
+                          (delta . "hello\n")))))
+            (should-not (string-match-p "    hello" (buffer-string)))
+            (codex-ide--handle-notification
+             session
+             '((method . "turn/completed")
+               (params . ((turnId . "turn-1")))))
+            (should (eq canceled 'fake-command-output-timer))
+            (should (string-match-p "    hello" (buffer-string))))))))))
+
+(ert-deftest codex-ide-turn-completed-does-not-flush-empty-command-output ()
+  (let ((project-dir (codex-ide-test--make-temp-project))
+        (codex-ide-command-output-delta-coalesce-delay-seconds 0.05))
+    (codex-ide-test-with-fixture
+     project-dir
+     (codex-ide-test-with-fake-processes
+      (let ((session (codex-ide--create-process-session)))
+        (codex-ide--insert-input-prompt session "submitted prompt")
+        (with-current-buffer (codex-ide-session-buffer session)
+          (codex-ide--handle-notification
+           session
+           '((method . "turn/started")
+             (params . ((turn . ((id . "turn-1")))))))
+          (codex-ide--render-item-start
+           session
+           '((id . "call-1")
+             (type . "commandExecution")
+             (command . ["echo" "hello"])))
+          (codex-ide--handle-notification
+           session
+           '((method . "turn/completed")
+             (params . ((turnId . "turn-1")))))
+          (should-not (string-match-p "output: 0 lines" (buffer-string)))
+          (should-not (string-match-p "streaming \\[fold\\]"
+                                      (buffer-string)))))))))
+
+(ert-deftest codex-ide-item-completion-flushes-pending-agent-delta ()
+  (let ((project-dir (codex-ide-test--make-temp-project))
+        (codex-ide-agent-message-delta-coalesce-delay-seconds 0.05))
+    (codex-ide-test-with-fixture
+     project-dir
+     (codex-ide-test-with-fake-processes
+      (let ((session (codex-ide--create-process-session)))
+        (codex-ide--insert-input-prompt session "submitted prompt")
+        (codex-ide--begin-turn-display session)
+        (with-current-buffer (codex-ide-session-buffer session)
+          (cl-letf (((symbol-function 'run-at-time)
+                     (lambda (&rest _args) 'fake-agent-message-timer))
+                    ((symbol-function 'timerp)
+                     (lambda (timer)
+                       (eq timer 'fake-agent-message-timer)))
+                    ((symbol-function 'cancel-timer)
+                     (lambda (_timer) nil)))
+            (codex-ide--handle-notification
+             session
+             '((method . "item/agentMessage/delta")
+               (params . ((itemId . "msg-1")
+                          (delta . "Before completion.\n")))))
+            (codex-ide--handle-notification
+             session
+             '((method . "item/completed")
+               (params . ((item . ((id . "call-1")
+                                   (type . "commandExecution")
+                                   (status . "completed")
+                                   (exitCode . 0)
+                                   (aggregatedOutput . "out\n")))))))
+            (save-excursion
+              (goto-char (point-min))
+              (search-forward "Before completion.")
+              (let ((message-pos (match-beginning 0)))
+                (search-forward "output: 1 line")
+                (should (< message-pos (match-beginning 0))))))))))))
 
 (ert-deftest codex-ide-working-indicator-shows-as-prompt-help ()
   (with-temp-buffer
@@ -7893,6 +8186,95 @@
 				      (goto-char (marker-position
 						  (codex-ide-session-input-start-marker session)))
 				      (should (eolp))))))))
+
+(ert-deftest codex-ide-error-notification-flushes-pending-agent-delta ()
+  (let ((project-dir (codex-ide-test--make-temp-project))
+        (codex-ide-agent-message-delta-coalesce-delay-seconds 0.05))
+    (codex-ide-test-with-fixture
+     project-dir
+     (codex-ide-test-with-fake-processes
+      (let ((session (codex-ide--create-process-session)))
+        (setf (codex-ide-session-thread-id session) "thread-error-agent")
+        (with-current-buffer (codex-ide-session-buffer session)
+          (cl-letf (((symbol-function 'run-at-time)
+                     (lambda (&rest _args) 'fake-agent-message-timer))
+                    ((symbol-function 'timerp)
+                     (lambda (timer)
+                       (eq timer 'fake-agent-message-timer)))
+                    ((symbol-function 'cancel-timer)
+                     (lambda (_timer) nil)))
+            (codex-ide--handle-notification
+             session
+             '((method . "turn/started")
+               (params . ((turn . ((id . "turn-error-agent")))))))
+            (codex-ide--handle-notification
+             session
+             '((method . "item/agentMessage/delta")
+               (params . ((itemId . "msg-1")
+                          (delta . "Assistant before error.\n")))))
+            (should-not (string-match-p "Assistant before error"
+                                        (buffer-string)))
+            (codex-ide--handle-notification
+             session
+             '((method . "error")
+               (params . ((error . ((message . "unexpected status 401 Unauthorized")))
+                          (willRetry . :json-false)
+                          (turnId . "turn-error-agent")))))
+            (save-excursion
+              (goto-char (point-min))
+              (search-forward "Assistant before error.")
+              (let ((message-pos (match-beginning 0)))
+                (search-forward "Codex notification:")
+                (should (< message-pos (match-beginning 0)))))
+            (should-not
+             (codex-ide--session-metadata-get
+              session
+              :agent-message-delta-flush-timer)))))))))
+
+(ert-deftest codex-ide-error-notification-flushes-pending-command-output ()
+  (let ((project-dir (codex-ide-test--make-temp-project))
+        (codex-ide-command-output-delta-coalesce-delay-seconds 0.05)
+        (codex-ide-renderer-command-output-fold-on-start nil))
+    (codex-ide-test-with-fixture
+     project-dir
+     (codex-ide-test-with-fake-processes
+      (let ((session (codex-ide--create-process-session)))
+        (setf (codex-ide-session-thread-id session) "thread-error-command")
+        (with-current-buffer (codex-ide-session-buffer session)
+          (cl-letf (((symbol-function 'run-at-time)
+                     (lambda (&rest _args) 'fake-command-output-timer))
+                    ((symbol-function 'timerp)
+                     (lambda (timer)
+                       (eq timer 'fake-command-output-timer)))
+                    ((symbol-function 'cancel-timer)
+                     (lambda (_timer) nil)))
+            (codex-ide--handle-notification
+             session
+             '((method . "turn/started")
+               (params . ((turn . ((id . "turn-error-command")))))))
+            (codex-ide--render-item-start
+             session
+             '((id . "call-1")
+               (type . "commandExecution")
+               (command . ["echo" "hello"])))
+            (codex-ide--handle-notification
+             session
+             '((method . "item/commandExecution/outputDelta")
+               (params . ((itemId . "call-1")
+                          (delta . "hello\n")))))
+            (should-not (string-match-p "    hello" (buffer-string)))
+            (codex-ide--handle-notification
+             session
+             '((method . "error")
+               (params . ((error . ((message . "unexpected status 401 Unauthorized")))
+                          (willRetry . :json-false)
+                          (turnId . "turn-error-command")))))
+            (save-excursion
+              (goto-char (point-min))
+              (search-forward "    hello")
+              (let ((output-pos (match-beginning 0)))
+                (search-forward "Codex notification:")
+                (should (< output-pos (match-beginning 0))))))))))))
 
 (ert-deftest codex-ide-error-notification-retries-stay-concise-and-keep-turn-open ()
   (let ((project-dir (codex-ide-test--make-temp-project)))

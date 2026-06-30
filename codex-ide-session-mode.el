@@ -49,6 +49,7 @@
 
 (defvar codex-ide-session-enable-visual-line-mode)
 (defvar corfu-mode)
+(defvar corfu-auto)
 (defvar corfu-on-exact-match)
 
 (defconst codex-ide-session-mode--transcript-detail-kind-property
@@ -795,6 +796,7 @@ When point is in a prompt mention,
   (setq-local codex-ide-session-transcript-detail-level
               codex-ide-session-transcript-default-detail-level)
   (codex-ide-session-mode-refresh-transcript-detail-visibility)
+  (setq-local corfu-auto nil)
   (add-hook 'completion-at-point-functions
             #'codex-ide-slash-command-completion-at-point
             nil

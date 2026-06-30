@@ -167,6 +167,9 @@
       (codex-ide-log-message session "Cleaning up session state"))
     (when session
       (codex-ide--delete-session-local-image-temp-files session))
+    (when session
+      (codex-ide--cancel-agent-message-delta-flush session)
+      (codex-ide--cancel-command-output-render session))
     (when (process-live-p stderr-process)
       (delete-process stderr-process))
     (when session

@@ -11,6 +11,8 @@
 (require 'codex-ide)
 (require 'codex-ide-session-mode)
 
+(defvar corfu-auto)
+
 (defun codex-ide-session-mode-test--flatten-imenu-labels (index)
   "Return INDEX labels in depth-first order for assertions."
   (let (labels)
@@ -73,6 +75,16 @@
                   post-self-insert-hook))
     (should (memq #'codex-ide-session-mode-sync-mention-minor-mode
                   post-command-hook))))
+
+(ert-deftest codex-ide-session-mode-disables-global-corfu-auto ()
+  (let ((corfu-auto t))
+    (with-temp-buffer
+      (codex-ide-session-mode)
+      (should (local-variable-p 'corfu-auto))
+      (should-not (bound-and-true-p corfu-auto)))
+    (should corfu-auto)
+    (with-temp-buffer
+      (should corfu-auto))))
 
 (ert-deftest codex-ide-session-mode-slash-command-mode-binds-ret-to-complete-or-submit ()
   (with-temp-buffer

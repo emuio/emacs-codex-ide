@@ -3604,15 +3604,24 @@ When ITEM-ID is non-nil, cancel only that item."
          states)))))
 
 (defun codex-ide--flush-command-output-render (&optional session item-id)
-  "Flush pending command output render for SESSION and ITEM-ID."
+  "Flush pending command output render for SESSION.
+When ITEM-ID is non-nil, flush only that item."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
-  (when (and session item-id)
-    (when-let* ((state (codex-ide--item-state session item-id)))
-      (codex-ide--cancel-command-output-render session item-id)
-      (when (or (plist-get state :summary)
-                (plist-get state :command-output-overlay)
-                (plist-get state :item-result-overlay))
-        (codex-ide--render-command-output-state session item-id)))))
+  (when session
+    (if item-id
+        (when-let* ((state (codex-ide--item-state session item-id)))
+          (codex-ide--cancel-command-output-render session item-id)
+          (when (or (plist-get state :summary)
+                    (plist-get state :command-output-overlay)
+                    (plist-get state :item-result-overlay))
+            (codex-ide--render-command-output-state session item-id)))
+      (when-let* ((states (codex-ide-session-item-states session)))
+        (when (hash-table-p states)
+          (maphash
+           (lambda (stored-item-id state)
+             (when (plist-get state :command-output-render-timer)
+               (codex-ide--flush-command-output-render session stored-item-id)))
+           states))))))
 
 (defun codex-ide--schedule-command-output-render (session item-id)
   "Schedule command output rendering for ITEM-ID in SESSION."
@@ -4779,10 +4788,10 @@ When COMPLETION is non-nil, render completion-specific state details."
         ("agentMessage"
          (codex-ide--render-current-agent-message-markdown session item-id t))
         ("commandExecution"
-         (codex-ide--cancel-command-output-render session item-id)
+         (codex-ide--flush-command-output-render session item-id)
          (setq state (codex-ide--item-state session item-id))
-         (let ((output-text (or (alist-get 'aggregatedOutput item)
-                                (codex-ide--command-output-state-full-text state))))
+         (let ((output-text (or (codex-ide--command-output-state-full-text state)
+                                (alist-get 'aggregatedOutput item))))
            (codex-ide--complete-command-output-block session item-id output-text)
            (codex-ide--render-command-completion-details
             session item output-text)))
@@ -6643,6 +6652,7 @@ compatibility with older app-server payloads and global notifications."
            (codex-ide--begin-turn-display session)))
 	("item/started"
 	 (when-let* ((item (alist-get 'item params)))
+           (codex-ide--flush-agent-message-delta session)
            (when (codex-ide--remember-or-request-model-name session item)
              (codex-ide--update-header-line session))
            (codex-ide--check-reported-turn-config
@@ -6676,6 +6686,7 @@ compatibility with older app-server payloads and global notifications."
 	("item/commandExecution/outputDelta"
 	 (let ((item-id (alist-get 'itemId params))
                (delta (or (alist-get 'delta params) "")))
+           (codex-ide--flush-agent-message-delta session)
            (when codex-ide-log-stream-deltas
              (codex-ide-log-message
               session
@@ -6700,6 +6711,7 @@ compatibility with older app-server payloads and global notifications."
 	("item/fileChange/outputDelta"
 	 (let ((item-id (alist-get 'itemId params))
                (delta (or (alist-get 'delta params) "")))
+           (codex-ide--flush-agent-message-delta session)
            (when codex-ide-log-stream-deltas
              (codex-ide-log-message
               session
@@ -6716,6 +6728,7 @@ compatibility with older app-server payloads and global notifications."
              (codex-ide--put-current-turn-file-change session item-id nil delta)
              (codex-ide-session-diff-note-session-updated session))))
 	("item/plan/delta"
+         (codex-ide--flush-agent-message-delta session)
 	 (when codex-ide-log-stream-deltas
            (codex-ide-log-message
             session
@@ -6723,6 +6736,7 @@ compatibility with older app-server payloads and global notifications."
             (length (or (alist-get 'delta params) ""))))
 	 (codex-ide--render-plan-delta session params))
 	("item/reasoning/summaryTextDelta"
+         (codex-ide--flush-agent-message-delta session)
 	 (when codex-ide-log-stream-deltas
            (codex-ide-log-message
             session
@@ -6733,9 +6747,7 @@ compatibility with older app-server payloads and global notifications."
 	 (codex-ide--render-reasoning-delta session params))
 	("item/completed"
 	 (when-let* ((item (alist-get 'item params)))
-           (codex-ide--flush-agent-message-delta
-            session
-            (alist-get 'id item))
+           (codex-ide--flush-agent-message-delta session)
            (when (codex-ide--remember-or-request-model-name session item)
              (codex-ide--update-header-line session))
            (codex-ide--check-reported-turn-config
@@ -6765,6 +6777,7 @@ compatibility with older app-server payloads and global notifications."
            (if turn-id
                (progn
 		 (codex-ide--flush-agent-message-delta session)
+                 (codex-ide--flush-command-output-render session)
 		 (codex-ide--mark-current-turn-diff-completed session)
 		 (codex-ide-session-diff-note-session-updated session)
 		 (when interrupted
@@ -6786,6 +6799,8 @@ compatibility with older app-server payloads and global notifications."
 		 (codex-ide--classify-session-error
                   detail
                   (alist-get 'http-status info))))
+           (codex-ide--flush-agent-message-delta session)
+           (codex-ide--flush-command-output-render session)
            (codex-ide-log-message session "Error notification: %S" params)
            (if (alist-get 'will-retry info)
                (codex-ide--handle-retryable-notification-error session info)
