@@ -50,6 +50,14 @@
 (defvar codex-ide-personality)
 (defvar codex-ide-thread-list-default-limit)
 
+(defconst codex-ide--subagent-thread-source-kinds
+  ["subAgent"
+   "subAgentReview"
+   "subAgentCompact"
+   "subAgentThreadSpawn"
+   "subAgentOther"]
+  "App-server source kinds used by spawned agent threads.")
+
 (defun codex-ide--next-request-id (&optional session)
   "Return the next request id for SESSION."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
@@ -419,6 +427,35 @@ SORT-KEY is nil, sort by `updated_at'."
          (data (alist-get 'data result)))
     (append data nil)))
 
+(defun codex-ide--list-descendant-threads (session ancestor-thread-id)
+  "List spawned descendants of ANCESTOR-THREAD-ID using SESSION."
+  (unless session
+    (error "No Codex session available"))
+  (unless (and (stringp ancestor-thread-id)
+               (not (string-empty-p ancestor-thread-id)))
+    (error "Invalid ancestor thread id: %S" ancestor-thread-id))
+  (let ((cursor nil)
+        (threads nil)
+        (page nil))
+    (while
+        (progn
+          (setq page
+                (codex-ide--request-sync
+                 session
+                 "thread/list"
+                 (delq nil
+                       `((ancestorThreadId . ,ancestor-thread-id)
+                         (sourceKinds . ,codex-ide--subagent-thread-source-kinds)
+                         (sortKey . "created_at")
+                         (sortDirection . "asc")
+                         (limit . ,codex-ide-thread-list-default-limit)
+                         ,@(when cursor
+                             `((cursor . ,cursor)))))))
+          (setq threads (nconc threads (append (alist-get 'data page) nil))
+                cursor (alist-get 'nextCursor page))
+          cursor))
+    threads))
+
 (defun codex-ide--list-models (&optional session)
   "List available models using SESSION."
   (setq session (or session (codex-ide--get-default-session-for-current-buffer)))
@@ -637,7 +674,6 @@ Return nil when app-server does not provide usable model metadata."
                     (not (string-empty-p default))
                     (member default choices))))
     (list :choices choices :default default)))
-
 (defun codex-ide--fast-service-tier (&optional session)
   "Return the app-server service tier implied by SESSION's Fast setting."
   (when (equal (codex-ide-config-effective-value 'fast session) "on")
